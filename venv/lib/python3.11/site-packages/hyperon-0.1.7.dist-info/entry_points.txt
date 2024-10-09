@@ -1,0 +1,2 @@
+[console_scripts]
+metta = hyperon.metta:main

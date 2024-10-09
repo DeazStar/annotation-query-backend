@@ -1,0 +1,39 @@
+Metadata-Version: 2.1
+Name: neo4j-utils
+Version: 0.0.7
+Summary: 
+Home-page: https://github.com/saezlab/neo4j-utils
+License: MIT
+Author: Denes Turei
+Author-email: turei.denes@gmail.com
+Requires-Python: >=3.8,<4.0
+Classifier: Development Status :: 2 - Pre-Alpha
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Science/Research
+Classifier: License :: OSI Approved :: GNU General Public License v3 (GPLv3)
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Natural Language :: English
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Requires-Dist: PyYAML (>=5.0)
+Requires-Dist: colorlog
+Requires-Dist: neo4j (>=4.4,<5.0)
+Requires-Dist: toml
+Project-URL: Bug Tracker, https://github.com/saezlab/neo4j-utils/issues
+Project-URL: Repository, https://github.com/saezlab/neo4j-utils
+Description-Content-Type: text/x-rst
+
+Extras on top of the official Neo4j driver
+##########################################
+
+If you search *neo4j* in *PyPI*, besides a ton of abandoned or irrelevant
+modules, you will find the ``neo4j`` module provided by the Neo4j company,
+and the full-fledged, community developed ``py2neo``. The official module
+comes with a really bare-bones API. Here we only add a thin wrapper around
+it to make its usage a bit more convenient.
+

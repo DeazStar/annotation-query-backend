@@ -1,4 +1,4 @@
-name: Run Tests Before Merge
+name: Run Tests
 
 on:
   pull_request:
@@ -11,36 +11,29 @@ jobs:
 
     services:
       mongo:
-        image: mongo:latest  # If MongoDB is needed for tests
+        image: mongo:4.2
         ports:
           - 27017:27017
+        options: >-
+          --health-cmd "mongo --eval 'db.runCommand({ ping: 1 })'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v2
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v2
       with:
-        python-version: '3.x'  # Adjust based on your version
+        python-version: '3.8'
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt  # Adjust to your setup
+        pip install -r requirements.txt
 
-    - name: Run Unit Tests
+    - name: Run Tests
       run: |
-        pytest unit/  # Run tests inside the 'unit' folder
-
-    - name: Run Integration Tests
-      run: |
-        pytest integration/  # Run tests inside 'integration' folder
-
-    - name: Run Library Tests
-      run: |
-        pytest lib/  # Run tests inside 'lib' folder
-
-    - name: Notify on test failure
-      if: failure()
-      run: echo "Tests failed! Fix issues before merging."
+        pytest --maxfail=5 --disable-warnings

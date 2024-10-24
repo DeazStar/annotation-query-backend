@@ -1,6 +1,5 @@
 name: Run Tests Before Merge
 
-# Trigger workflow on push or pull request to the main branch
 on:
   pull_request:
     branches:
@@ -10,25 +9,38 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      mongo:
+        image: mongo:latest  # If MongoDB is needed for tests
+        ports:
+          - 27017:27017
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Set up Python (if using Python)
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.x'  # Specify your Python version
+        python-version: '3.x'  # Adjust based on your version
 
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt  # Adjust based on your project setup
+        pip install -r requirements.txt  # Adjust to your setup
 
-    - name: Run Tests
+    - name: Run Unit Tests
       run: |
-        pytest  # or any other test command for your framework
+        pytest unit/  # Run tests inside the 'unit' folder
 
-    - name: Notify on test failure (optional)
+    - name: Run Integration Tests
+      run: |
+        pytest integration/  # Run tests inside 'integration' folder
+
+    - name: Run Library Tests
+      run: |
+        pytest lib/  # Run tests inside 'lib' folder
+
+    - name: Notify on test failure
       if: failure()
       run: echo "Tests failed! Fix issues before merging."
-

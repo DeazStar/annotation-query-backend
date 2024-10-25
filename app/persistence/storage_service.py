@@ -3,7 +3,7 @@ from pymongoose.mongo_types import   MongoException, MongoError
 class StorageService:
     def __init__(self):
         pass
-    
+    #cheack
     def save(self, user_id, query, title, summary):
         try:
             # Check if the user has already saved the same query

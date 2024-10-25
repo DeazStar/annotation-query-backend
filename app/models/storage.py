@@ -32,6 +32,11 @@ class Storage(Schema):
                 "required": True,
             }
         }
+
+
+        self.indexes = [
+            {"fields": ["user_id", "query"], "unique": True}
+        ]
         
         super().__init__(self.schema_name, self.schema, kwargs)
 

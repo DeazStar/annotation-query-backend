@@ -38,7 +38,7 @@ query_one_node_with_id = {
               }],
 		        "predicates": []
           },
-          "expected_output": [['MATCH (n_n1:gene {"id: testcase"}) RETURN n_n1']]
+          "expected_output": ['MATCH (n_n1:gene {"id: testcase"}) RETURN n_n1']
         }
 
 query_one_node_with_id_properties = {
@@ -68,7 +68,7 @@ query_one_node_noid_with_oneproperty = {
               }],
 		        "predicates": []
           },
-          "expected_output": ["MATCH (n_n1:gene {gene_type: 'protein_coding'}) RETURN n_n1"]
+          "expected_output": ["MATCH (n_n1:gene) WHERE n_n1.gene_type =~ '(?i)protein_coding' RETURN n_n1"]
         }
 
 query_one_node_noid_with_properties = {
@@ -84,7 +84,7 @@ query_one_node_noid_with_properties = {
               }],
 		        "predicates": []
           },
-          "expected_output": ["MATCH (n_n1:gene {gene_type: 'protein_coding', chr: 'chr1'}) RETURN n_n1"]
+          "expected_output": ["MATCH (n_n1:gene) WHERE n_n1.gene_type =~ '(?i)protein_coding' AND n_n1.chr =~ '(?i)chr1' RETURN n_n1"]
         }
 
 query_two_node_noid_noproperties = {
@@ -99,7 +99,7 @@ query_two_node_noid_noproperties = {
                 "node_id": "n2",
                 "id": "",
                 "type": "gene",
-                "properties": { }
+                "properties": {}
                 }
               ],
 		        "predicates": []
@@ -128,7 +128,7 @@ query_two_node_noid_with_properties = {
               ],
 		        "predicates": []
           },
-          "expected_output": ["MATCH (n_n1:gene {gene_type: 'protein_coding'}), (n_n2:gene {chr: 'chr1'}) RETURN n_n1, n_n2", "MATCH (n_n1:gene {gene_type: 'protein_coding'}), (n_n2:gene {chr: 'chr1'}) RETURN n_n2, n_n1"]
+          "expected_output": ["MATCH (n_n1:gene), (n_n2:gene) WHERE n_n1.gene_type =~ '(?i)protein_coding' AND n_n2.chr =~ '(?i)chr1' RETURN n_n1, n_n2", "MATCH (n_n1:gene), (n_n2:gene) WHERE n_n1.gene_type =~ '(?i)protein_coding' AND n_n2.chr =~ 'chr1' RETURN n_n2, n_n1"]
         }
 
 query_two_node_id_with_properties = {
@@ -152,7 +152,7 @@ query_two_node_id_with_properties = {
               ],
 		        "predicates": []
           },
-          "expected_output": ["MATCH (n_n1:gene {id: 'testcase'}), (n_n2:gene {chr: 'chr1'}) RETURN n_n1, n_n2", "MATCH (n_n1:gene {id: 'testcase'}), (n_n2:gene {chr: 'chr1'}) RETURN n_n2, n_n1"]
+          "expected_output": ["MATCH (n_n1:gene {id: 'testcase'}), (n_n2:gene) WHERE n_n2.chr =~ '(?i)chr1' RETURN n_n1, n_n2", "MATCH (n_n1:gene {id: 'testcase'}), (n_n2:gene) WHERE n_n2.chr =~ '(?i)chr1' RETURN n_n2, n_n1"]
         }
 
 query_two_node_with_predicate = {
@@ -215,8 +215,8 @@ query_three_node_with_predicate = {
           }
       ]
       },
-    "expected_output": ["MATCH (n1:gene {gene_type: 'protein_coding'}), (n1)-[r0:transcribed_to]->(n2:transcript) RETURN r0, n1, n2 , null AS n_n3 UNION MATCH (n_n3:protein {protein_name: 'ANKE1'}) RETURN  n_n3 , null AS r0, null AS n1, null AS n2",
-                        "MATCH (n1:gene {gene_type: 'protein_coding'}), (n1)-[r0:transcribed_to]->(n2:transcript) RETURN r0, n2, n1 , null AS n_n3 UNION MATCH (n_n3:protein {protein_name: 'ANKE1'}) RETURN  n_n3 , null AS r0, null AS n2, null AS n1"]
+    "expected_output": ["MATCH (n1:gene), (n1)-[r0:transcribed_to]->(n2:transcript) WHERE n1.gene_type =~ '(?i)protein_coding' RETURN r0, n1, n2 , null AS n_n3 UNION MATCH (n_n3:protein) WHERE n_n3.protein_name =~ '(?i)ANKE1' RETURN  n_n3 , null AS r0, null AS n1, null AS n2",
+                        "MATCH (n1:gene), (n1)-[r0:transcribed_to]->(n2:transcript) WHERE n1.gene_type =~ '(?i)protein_coding' RETURN r0, n2, n1 , null AS n_n3 UNION MATCH (n_n3:protein) WHERE n_n3.protein_name =~ '(?i)ANKE1' RETURN  n_n3 , null AS r0, null AS n2, null AS n1"]
     }
 
 query_json = {
@@ -253,8 +253,8 @@ query_json = {
       }
    ]
   },
-  "expected_output": ["MATCH (n1:gene {gene_type: 'protein_coding'}), (n1)-[r0:transcribed_to]->(n2:transcript) RETURN r0, n2, n1 , null AS n_n3 UNION MATCH (n_n3:protein {protein_name: 'ANKE1'}) RETURN  n_n3 , null AS r0, null AS n2, null AS n1", 
-                      "MATCH (n1:gene {gene_type: 'protein_coding'}), (n1)-[r0:transcribed_to]->(n2:transcript) RETURN r0, n1, n2 , null AS n_n3 UNION MATCH (n_n3:protein {protein_name: 'ANKE1'}) RETURN  n_n3 , null AS r0, null AS n1, null AS n2"]
+  "expected_output": ["MATCH (n1:gene), (n1)-[r0:transcribed_to]->(n2:transcript) WHERE n1.gene_type =~ '(?i)protein_coding' RETURN r0, n2, n1 , null AS n_n3 UNION MATCH (n_n3:protein) WHERE n_n3.protein_name =~ '(?i)ANKE1' RETURN  n_n3 , null AS r0, null AS n2, null AS n1", 
+                      "MATCH (n1:gene), (n1)-[r0:transcribed_to]->(n2:transcript) WHERE n1.gene_type =~ '(?i)protein_coding' RETURN r0, n1, n2 , null AS n_n3 UNION MATCH (n_n3:protein) WHERE n_n3.protein_name =~ '(?i)ANKE1' RETURN  n_n3 , null AS r0, null AS n1, null AS n2"]
 }
 
 @pytest.fixture(params=[

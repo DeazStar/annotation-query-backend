@@ -14,3 +14,5 @@ tests\test_Metta_query_generator\test_parse_and_serialize_properties.txt
 gen_jwt.py
 test_pymonogoose.py
 .vscode
+test_email.py
+tags

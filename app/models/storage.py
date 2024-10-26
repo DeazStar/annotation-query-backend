@@ -29,7 +29,7 @@ class Storage(Schema):
             },
             "summary": {
                 "type": Types.String,
-                "required": True,
+                "requir+ed": True,
             }
         }
 

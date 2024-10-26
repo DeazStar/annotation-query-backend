@@ -73,6 +73,29 @@ def get_relations_for_node_endpoint(current_user_id, node_label):
     relations = json.dumps(schema_manager.get_relations_for_node(node_label), indent=4)
     return Response(relations, mimetype='application/json')
 
+
+
+
+
+@app.route('/save_query', methods=['POST'])
+def save_query():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    query = data.get('query')
+    title = data.get('title')
+    summary = data.get('summary')
+    
+    # Add a check for missing fields
+    if not all([user_id, query, title, summary]):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # Save the query using your storage service
+    result = storage_service.save(user_id, query, title, summary)
+    return jsonify(result)
+
+
+
+
 @app.route('/query', methods=['POST'])
 @token_required
 def process_query(current_user_id):

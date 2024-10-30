@@ -3,7 +3,6 @@ import os
 from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
-from typing import Dict, List
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -118,7 +117,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         return metta_output
 
 
-    def run_query(self, query_code):
+    def run_query(self, query_code, limit):
         return self.metta.run(query_code)
 
     def parse_and_serialize(self, input, schema, all_properties):
@@ -189,7 +188,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                     result.append(tuple(res))
         return result
 
-    def convert_to_dict(self, results:list , schema=None: dict):
+    def convert_to_dict(self, results, schema=None):
         result = self.prepare_query_input(results, schema)
         (_, node_dict, edge_dict) = self.process_result(result[0], True)
         return (node_dict, edge_dict)

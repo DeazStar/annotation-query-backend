@@ -1,4 +1,3 @@
-import datetime
 from flask import copy_current_request_context, request, jsonify, Response
 import logging
 import json
@@ -120,7 +119,7 @@ def process_query(current_user_id):
         query_code = db_instance.query_Generator(requests, node_map)
         
         # Run the query and parse the results
-        result = db_instance.run_query(query_code)
+        result = db_instance.run_query(query_code, limit)
         parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
@@ -128,27 +127,24 @@ def process_query(current_user_id):
             "edges": parsed_result[1]
         }
 
+        title = llm.generate_title(query_code)
+        summary = llm.generate_summary(response_data)
+
+        response_data["title"] = title
+        response_data["summary"] = summary
+
         if isinstance(query_code, list):
             query_code = query_code[0]
-        
-        existing_query = storage_service.get_user_query(str(current_user_id), query_code)
 
-        if existing_query is None:
-            title = llm.generate_title(query_code)
-            summary = llm.generate_summary(response_data)
+        storage_service.save(str(current_user_id), query_code, title, summary)
 
-            storage_service.save(str(current_user_id), query_code, title, summary)
-        else:
-            storage_service.update(existing_query.id, {"updated_at": datetime.datetime.now()})
-
-        if limit:
-            response_data = limit_graph(response_data, limit)
+        # if limit:
+        #     response_data = limit_graph(response_data, limit)
 
         formatted_response = json.dumps(response_data, indent=4)
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
         logging.error(f"Error processing query: {e}")
-        print(e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/email-query', methods=['POST'])

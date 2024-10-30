@@ -14,6 +14,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 print(os.getenv('NEO4J_URI'))
+
 class CypherQueryGenerator(QueryGeneratorInterface):
     def __init__(self, dataset_path: str):
         self.driver = GraphDatabase.driver(
@@ -24,6 +25,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         # self.load_dataset(self.dataset_path)
 
     def close(self):
+        
         self.driver.close()
 
     def load_dataset(self, path: str) -> None:
@@ -239,3 +241,43 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 node['id'] = ''
             node["id"] = node["id"].lower()
         return request
+    def generate_count_query(self, requests, node_map):
+        """Generates a Cypher query that counts nodes and edges based on given requests and predicates."""
+        nodes = requests['nodes']
+        predicates = requests.get("predicates", None)
+
+        # Build the node and edge count queries
+        node_match_clauses = []
+        edge_match_clauses = []
+        
+        if not predicates:
+            for node in nodes:
+                var_name = f"n_{node['node_id']}"
+                node_match_clauses.append(self.match_node(node, var_name))
+            node_count_query = f"MATCH {', '.join(node_match_clauses)} RETURN COUNT(*) as node_count"
+            edge_count_query = "RETURN 0 as edge_count"  # No edges if no predicates provided
+
+        else:
+            for i, predicate in enumerate(predicates):
+                source_node = node_map[predicate['source']]
+                target_node = node_map[predicate['target']]
+                source_var = source_node['node_id']
+                target_var = target_node['node_id']
+                source_match = self.match_node(source_node, source_var)
+                target_match = self.match_node(target_node, target_var)
+                
+                node_match_clauses.append(source_match)
+                node_match_clauses.append(target_match)
+                edge_match_clauses.append(f"({source_var})-[r{i}:{predicate['type'].replace(' ', '_').lower()}]->({target_var})")
+            
+            node_count_query = f"MATCH {', '.join(node_match_clauses)} RETURN COUNT(DISTINCT {', '.join([node['node_id'] for node in nodes])}) as node_count"
+            edge_count_query = f"MATCH {', '.join(edge_match_clauses)} RETURN COUNT(*) as edge_count"
+
+        return node_count_query, edge_count_query
+    def run_count_queries(self, count_queries):
+        """Executes node and edge count queries and returns counts."""
+        node_count_query, edge_count_query = count_queries
+        with self.driver.session() as session:
+            node_count = session.run(node_count_query).single()['node_count']
+            edge_count = session.run(edge_count_query).single()['edge_count']
+        return node_count, edge_count

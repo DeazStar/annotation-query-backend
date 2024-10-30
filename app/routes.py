@@ -131,6 +131,9 @@ def process_query(current_user_id):
 
         #convert id to appropriate format
         requests = db_instance.parse_id(requests)
+        # Generate count queries and run them to get node/edge counts before limit
+        count_queries = db_instance.generate_count_query(requests, node_map)
+        total_nodes, total_edges = db_instance.run_count_queries(count_queries)
 
         # Generate the query code
         query_code = db_instance.query_Generator(requests, node_map)
@@ -140,8 +143,8 @@ def process_query(current_user_id):
         parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
-            "length_nodes": len(parsed_result[0]),  # Length of nodes
-            "length_edges": len(parsed_result[1]),  # Length of edges
+            "total_nodes": total_nodes,  # Total number of nodes before limit
+            "total_edges": total_edges,  # Total number of edges before limit
             "nodes": parsed_result[0],
             "edges": parsed_result[1]
         }

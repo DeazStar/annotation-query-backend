@@ -3,6 +3,7 @@ import os
 from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
+from typing import Dict, List
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -15,7 +16,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         self.dataset_path = dataset_path
         self.load_dataset(self.dataset_path)
 
-    def initialize_space(self):
+    def initialize_space(self) -> None:
         self.metta.run("!(bind! &space (new-space))")
 
 
@@ -35,18 +36,18 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 logging.error(f"Error loading dataset from '{path}': {e}")
         logging.info(f"Finished loading {len(paths)} datasets.")
 
-    def generate_id(self):
+    def generate_id(self) -> str:
         import uuid
         return str(uuid.uuid4())[:8]
 
-    def construct_node_representation(self, node, identifier):
+    def construct_node_representation(self, node: str, identifier: str) -> None:
         node_type = node['type']
         node_representation = ''
         for key, value in node['properties'].items():
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def query_Generator(self, data,node_map):
+    def query_Generator(self, data: dict, node_map: dict) -> str:
         nodes = data['nodes']
 
         metta_output = '''!(match &space (,'''
@@ -188,7 +189,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                     result.append(tuple(res))
         return result
 
-    def convert_to_dict(self, results, schema=None):
+    def convert_to_dict(self, results:list , schema=None: dict):
         result = self.prepare_query_input(results, schema)
         (_, node_dict, edge_dict) = self.process_result(result[0], True)
         return (node_dict, edge_dict)
@@ -266,7 +267,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         result.append(relationship_list)
         return (result, node_to_dict, edge_to_dict)
 
-    def prepare_query_input(self, input, schema):
+    def prepare_query_input(self, input: list, schema: dict):
         result = []
 
         tuples = self.metta_seralizer(input[0])

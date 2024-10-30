@@ -17,10 +17,10 @@ databases = {
     # Add other database instances here
 }
 
-# llm = LLMHandler()  # Initialize the LLMHandler
+llm = LLMHandler()  # Initialize the LLMHandler
 storage_service = StorageService() # Initialize the storage service
 
-# app.config['llm_handler'] = llm
+app.config['llm_handler'] = llm
 app.config['storage_service'] = storage_service
 
 schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml', biocypher_config_path='./config/biocypher_config.yaml')

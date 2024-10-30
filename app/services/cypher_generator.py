@@ -128,6 +128,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     match_no_preds.append(self.match_node(node, var_name))
                     where_no_preds.extend(self.where_construct(node, var_name))
                     return_no_preds.append(var_name)
+
             list_of_node_ids = list(node_ids)
             list_of_node_ids.sort()
             return_preds.extend(list(list_of_node_ids))
@@ -168,7 +169,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             return f"({var_name}:{node['type']} {{id: '{node['id']}'}})"
         else:
             return f"({var_name}:{node['type']})"
-        
+
     def where_construct(self, node, var_name):
         properties = []
         if node['id']: 

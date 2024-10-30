@@ -85,7 +85,7 @@ class GraphSummarizer:
             #   break   Process the next batch in another iteration
 
         return descriptions
-    
+
     def nodes_description(self,nodes):
         nodes_descriptions = []
         # Process each source node and its related target nodes

@@ -1,3 +1,4 @@
+import datetime
 from flask import copy_current_request_context, request, jsonify, Response
 import logging
 import json
@@ -54,6 +55,12 @@ def load_config():
         raise
 
 config = load_config()
+
+@app.route('/kg-info', methods=['GET'])
+@token_required
+def get_graph_info(current_user_id):
+    graph_info = json.dumps(schema_manager.graph_info, indent=4)
+    return Response(graph_info, mimetype='application/json')
 
 @app.route('/nodes', methods=['GET'])
 @token_required
@@ -121,13 +128,18 @@ def process_query(current_user_id):
             "edges": parsed_result[1]
         }
 
-        title = llm.generate_title(query_code)
-        summary = llm.generate_summary(response_data)
-
         if isinstance(query_code, list):
             query_code = query_code[0]
+        
+        existing_query = storage_service.get_user_query(str(current_user_id), query_code)
 
-        storage_service.save(str(current_user_id), query_code, title, summary)
+        if existing_query is None:
+            title = llm.generate_title(query_code)
+            summary = llm.generate_summary(response_data)
+
+            storage_service.save(str(current_user_id), query_code, title, summary)
+        else:
+            storage_service.update(existing_query.id, {"updated_at": datetime.datetime.now()})
 
         if limit:
             response_data = limit_graph(response_data, limit)
@@ -136,6 +148,7 @@ def process_query(current_user_id):
         return Response(formatted_response, mimetype='application/json')
     except Exception as e:
         logging.error(f"Error processing query: {e}")
+        print(e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/email-query', methods=['POST'])
@@ -250,3 +263,4 @@ def process_user_history_by_id(current_user_id, id):
     except Exception as e:
         logging.error(f"Error processing query: {e}")
         return jsonify({"error": str(e)}), 500
+    

@@ -26,7 +26,7 @@ def validate_request(request, schema):
             if chr_property and not chr_property.startswith('chr'):
                 node["properties"]["chr"] = 'chr' + chr_property
 
-    ''''
+    
     # validate properties of nodes
     for node in nodes:
         properties = node['properties']
@@ -34,7 +34,7 @@ def validate_request(request, schema):
         for property in properties.keys():
             if property not in schema[node_type]['properties']:
                 raise Exception(f"{property} doesn't exsist in the schema!")
-    '''
+    
 
     node_map = {}
     for node in nodes:

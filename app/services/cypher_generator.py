@@ -13,7 +13,7 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+print(os.getenv('NEO4J_URI'))
 class CypherQueryGenerator(QueryGeneratorInterface):
     def __init__(self, dataset_path: str):
         self.driver = GraphDatabase.driver(

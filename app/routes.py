@@ -140,10 +140,11 @@ def process_query(current_user_id):
         parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
+            "length_nodes": len(parsed_result[0]),  # Length of nodes
+            "length_edges": len(parsed_result[1]),  # Length of edges
             "nodes": parsed_result[0],
             "edges": parsed_result[1]
         }
-
         title = llm.generate_title(query_code)
         summary = llm.generate_summary(response_data)
 
@@ -261,6 +262,8 @@ def process_user_history_by_id(current_user_id, id):
         parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
+            "length_nodes": len(parsed_result[0]),  # Length of nodes
+            "length_edges": len(parsed_result[1]),  # Length of edges
             "nodes": parsed_result[0],
             "edges": parsed_result[1]
         }

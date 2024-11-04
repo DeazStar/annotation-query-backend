@@ -29,7 +29,7 @@ app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER')
 
-# llm = app.config['llm_handler']
+llm = app.config['llm_handler']
 storage_service = app.config['storage_service']
 
 # Initialize Flask-Mail
@@ -125,13 +125,20 @@ def process_query(current_user_id):
         
         response_data = {
             "nodes": parsed_result[0],
-            "edges": parsed_result[1]
+            "edges": parsed_result[1],
+            "count":{
+                "nodes": parsed_result[2],
+                "edges": parsed_result[3]
+            }
         }
 
         if isinstance(query_code, list):
             query_code = query_code[0]
 
         existing_query = storage_service.get_user_query(str(current_user_id), query_code)
+
+        title = 'title'
+        summary = 'summary'
 
         if existing_query is None:
             title = llm.generate_title(query_code)

@@ -16,3 +16,4 @@ test_pymonogoose.py
 .vscode
 test_email.py
 tags
+test_count_query_generator.py

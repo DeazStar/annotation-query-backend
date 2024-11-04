@@ -377,7 +377,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         return parsed_result["nodes"], parsed_result["edges"], parse_count['node_count'], parse_count['edge_count']
 
     def convert_to_dict(self, results, schema):
-        (_, _, node_dict, edge_dict) = self.process_result(results, True)
+        (_, _, node_dict, edge_dict) = self.process_result(results[0], True)
         return (node_dict, edge_dict)
 
     def process_result(self, results, all_properties):

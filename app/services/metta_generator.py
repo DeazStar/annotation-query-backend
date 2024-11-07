@@ -117,7 +117,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         return metta_output
 
 
-    def run_query(self, query_code, limit):
+    def run_query(self, query_code, limit=None):
         return self.metta.run(query_code)
 
     def parse_and_serialize(self, input, schema, all_properties):
@@ -266,7 +266,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         result.append(relationship_list)
         return (result, node_to_dict, edge_to_dict)
 
-    def prepare_query_input(self, input: list, schema: dict):
+    def prepare_query_input(self, input, schema):
         result = []
 
         tuples = self.metta_seralizer(input[0])

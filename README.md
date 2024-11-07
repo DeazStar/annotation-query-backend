@@ -131,3 +131,115 @@ flask run
    ```
 
    This will build the Docker image and run the container, exposing the application on port 5000.
+
+# Another Alternative, you can use Docker compose file to run the applicaton:
+  - Build and start the services with Docker Compose:
+
+    ```bash
+    docker-compose up --build
+    ```
+   This command will build the Flask app's Docker image, set up MongoDB with data persistence, and configure Caddy as the reverse proxy.
+   
+   ### Accessing the Application
+
+      - Flask App: Access the application through Caddy on http://localhost:5000.
+
+   ### Stopping the Services
+
+      To stop the services, use:
+
+      ```bash
+      docker-compose down
+
+# Alternative, using bash script
+ You can run the annotation service by executing ``run.sh`` file
+
+
+## Prerequisites
+
+Make sure you have the following installed:
+
+- Docker
+- Docker Compose
+- Bash shell (default on most Unix/Linux systems)
+
+There should be this environment variable in your .env file 
+   ```bash
+   APP_PORT=<the port on which the application will be exposed>
+
+   DOCKER_HUB_REPO=<Docker Hub repository in the format {username}/{repository}>
+
+   MONGODB_DOCKER_PORT=<the port on which MongoDB will be accessible inside the Docker container, typically 27017>
+
+   CADDY_PORT=<the port on which Caddy will listen for incoming requests>
+
+   CADDY_PORT_FORWARD=<the internal port inside the Docker container where Caddy forwards requests to>
+   ```
+
+## Script Usage
+
+The `run.sh` script supports the following commands:
+
+### 1. Run Containers
+
+To build the necessary images (if they are not already built) and start the containers, use the following command:
+
+```bash
+sudo ./run.sh run
+```
+
+### 2. Push Docker Images
+
+To build the images and push them to Docker Hub, use:
+
+```bash
+sudo ./run.sh push
+```
+
+### 3. Clean Up
+
+To stop and remove existing containers and the Docker network, use:
+
+```bash
+sudo ./run.sh clean
+```
+
+### 4. Stop Containers
+
+To stop the running containers without removing them, use:
+
+```bash
+sudo ./run.sh stop
+```
+
+### 5. Re-run Containers
+
+To restart existing containers without pulling or building images, use:
+
+```bash
+sudo ./run.sh re-run
+```
+
+## Notes
+
+- The script requires `sudo` permissions to run Docker commands.
+- Ensure that you have the correct Docker images and that you have permissions to push to your Docker Hub account.
+
+## Example Workflow
+
+1. **Start the Services**:
+   ```bash
+   sudo ./run.sh run
+   ```
+
+2. **Make Changes to Your Code**.
+
+3. **Rebuild and Push Changes**:
+   ```bash
+   sudo ./run.sh push
+   ```
+
+4. **Clean Up After Development**:
+   ```bash
+   sudo ./run.sh clean
+   ```

@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 import threading
-from app import app, databases, schema_manager
+from app import app, database, schema_manager
 from app.lib import validate_request
 from flask_cors import CORS
 from app.lib import limit_graph
@@ -110,8 +110,7 @@ def process_query(current_user_id):
         if node_map is None:
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
 
-        database_type = config['database']['type']
-        db_instance = databases[database_type]
+        db_instance = database
 
         #convert id to appropriate format
         requests = db_instance.parse_id(requests)
@@ -182,8 +181,7 @@ def process_email_query(current_user_id):
             if node_map is None:
                 return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
         
-            database_type = config['database']['type']
-            db_instance = databases[database_type]
+            db_instance = database
             
             requests = db_instance.parse_id(requests)
 
@@ -255,8 +253,7 @@ def process_user_history_by_id(current_user_id, id):
 
 
     try:
-        database_type = config['database']['type']
-        db_instance = databases[database_type]
+        db_instance = database
         
         # Run the query and parse the results
         result = db_instance.run_query(query)

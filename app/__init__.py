@@ -5,18 +5,20 @@ from app.services.metta_generator import MeTTa_Query_Generator
 from db import mongo_init
 from app.services.llm_handler import LLMHandler
 from app.persistence.storage_service import StorageService
+from databasemanager import DatabaseManager
 
 app = Flask(__name__)
 
 mongo_init()
 
-databases = {
-    "metta": MeTTa_Query_Generator("./Data"),
-    "cypher": CypherQueryGenerator("./cypher_data")
-    
-    # Add other database instances here
-}
+#databases = {
+#    "metta": MeTTa_Query_Generator("./Data"),
+#    "cypher": CypherQueryGenerator("./cypher_data")
+#    
+#    # Add other database instances here
+#}
 
+database = DatabaseManager().db
 llm = LLMHandler()  # Initialize the LLMHandler
 storage_service = StorageService() # Initialize the storage service
 

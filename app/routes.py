@@ -13,6 +13,7 @@ from app.lib.email import init_mail, send_email
 from dotenv import load_dotenv
 from distutils.util import strtobool
 import datetime
+from pymongoose.mongo_types import MongoException
 
 # Load environmental variables
 load_dotenv()
@@ -155,6 +156,99 @@ def process_query(current_user_id):
     except Exception as e:
         logging.error(f"Error processing query: {e}")
         return jsonify({"error": str(e)}), 500
+    
+
+@app.route('/update-request/<string:annotation_id>', methods=['POST'])
+def update_request(annotation_id):
+    data = request.get_json()
+    if not data or 'requests' not in data:
+        return jsonify({"error": "Missing requests data"}), 400
+    
+    limit = request.args.get('limit')
+    properties = request.args.get('properties')
+    
+    if properties:
+        properties = bool(strtobool(properties))
+    else:
+        properties = False
+
+    if limit:
+        try:
+            limit = int(limit)
+        except ValueError:
+            return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
+    else:
+        limit = None
+
+    try:
+        requests = data['requests']
+        node_map = validate_request(requests, schema_manager.schema)
+        if node_map is None:
+            return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
+
+        database_type = config['database']['type']
+        db_instance = databases[database_type]
+        
+        requests = db_instance.parse_id(requests)
+        query_code = db_instance.query_Generator(requests, node_map)
+
+        result = db_instance.run_query(query_code, limit)
+        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        
+        response_data = {
+            "nodes": parsed_result[0],
+            "edges": parsed_result[1]
+        }
+
+        if isinstance(query_code, list):
+            query_code = query_code[0]
+         
+        title = llm.generate_title(query_code)
+        summary = llm.generate_summary(response_data)
+         
+        existing_record = storage_service.get_by_id(annotation_id)
+        if not existing_record:
+            return jsonify({"error": "Record not found"}), 404
+
+        updated_data = {
+            "title": title,
+            "query": query_code,
+            "summary": summary,
+            "updated_at": datetime.datetime.now()
+        }
+        storage_service.update(annotation_id, updated_data)
+
+        return jsonify({
+            "message": "Request updated successfully",
+            "updated_data": updated_data
+        }), 200
+
+    except MongoException as e:
+        logging.error(f"Database error: {e}")
+        return jsonify({"error": "Database error occurred"}), 500
+    except Exception as e:
+        logging.error(f"Error updating request: {e}")
+        return jsonify({"error": str(e)}), 500
+@app.route('/delete_annotation/<string:annotation_id>', methods=['DELETE'])
+def delete_annotation(annotation_id):
+    try:
+        existing_record = storage_service.get_by_id(annotation_id)
+        if not existing_record:
+            return jsonify({"error": "Annotation not found"}), 404
+
+        deleted_value = storage_service.delete_annotation(annotation_id)
+        if deleted_value:
+            return jsonify({"message": "Annotation deleted successfully"}), 200
+        else:
+            return jsonify({"message": "Error not deleted"}), 400
+
+    except MongoException as e:
+        logging.error(f"Database error: {e}")
+        return jsonify({"error": "Database error occurred"}), 500
+    except Exception as e:
+        logging.error(f"Error deleting annotation: {e}")
+        return jsonify({"error": str(e)}), 500
+
 
 @app.route('/email-query', methods=['POST'])
 @token_required

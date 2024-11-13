@@ -29,5 +29,6 @@ class LLMHandler:
 
     def generate_summary(self, graph):
         summarizer = Graph_Summarizer(self.model)
-        summary = summarizer.ai_summarizer(graph)
+        summary = summarizer.summary(graph)
         return summary
+ 

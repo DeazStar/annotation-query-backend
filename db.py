@@ -4,7 +4,7 @@ from pymongoose.methods import set_schemas
 from app.models.storage import Storage
 
 MONGO_URI = os.environ.get("MONGO_URI")
-
+print(MONGO_URI)
 mongo_db = None
 
 def mongo_init():

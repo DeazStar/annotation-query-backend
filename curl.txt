@@ -6,6 +6,7 @@ curl -X GET http://localhost:5000/relations/gene
 
 curl -X POST http://localhost:5000/query -H "Content-Type: application/json" -d '{
   "requests": {
+    
     "nodes": [
       {
         "node_id": "n1",
@@ -90,7 +91,8 @@ curl --location 'http://localhost:5000/query' \
   }
 }'
 
-curl --location 'http://localhost:5000/query' --header 'Content-Type: application/json' --data '{
+curl --location 'http://localhost:5000/query' --header 'Content-Type: application/json'\
+ --data '{
   "requests": {
     "nodes": [
       {
@@ -106,4 +108,35 @@ curl --location 'http://localhost:5000/query' --header 'Content-Type: applicatio
   }
 }'
 
+curl -X POST http://localhost:8000/query \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoic29tZV9pZCJ9.6cqROhcxbZ8blMZq7dHA9laWqU0rOVjiMbpZ5UDvD04" \
+  -d '{
+      "requests": {
+          "nodes": [
+              {
+                  "node_id": "n1",
+                  "id": "",
+                  "type": "gene",
+                  "properties": {
+                  }
+              },
+              {
+                  "node_id": "n2",
+                  "id": "",
+                  "type": "transcript",
+                  "properties": {
+
+                  }
+              }
+              ],
+          "predicates": [
+              {
+                  "type": "transcribed to",
+                  "source": "n1",
+                  "target": "n2"
+              }
+          ]
+      }
+  }'
 

@@ -45,6 +45,6 @@ class Storage(Schema):
         }
         
         super().__init__(self.schema_name, self.schema, kwargs)
-
+    
     def __str__(self):
         return f"user_id: {self.user_id}, query: {self.query}, title: {self.title}, summary: {self.summary}"

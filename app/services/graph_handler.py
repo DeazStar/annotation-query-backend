@@ -145,6 +145,7 @@ class Graph_Summarizer:
         pass
 
     def summary(self,graph,user_query=None,graph_id=None):
+      
         prev_summery=[]
         try:
 

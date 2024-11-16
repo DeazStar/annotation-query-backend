@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 import threading
-from app import app, databases, schema_manager
+from app import app, schema_manager
 from app.lib import validate_request
 from flask_cors import CORS
 from app.lib import limit_graph
@@ -110,19 +110,16 @@ def process_query(current_user_id):
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
-
-        database_type = config['database']['type']
-        db_instance = databases[database_type]
-
+ 
         #convert id to appropriate format
-        requests = db_instance.parse_id(requests)
+        requests = app.db_instance.parse_id(requests)
 
         # Generate the query code
-        query_code = db_instance.query_Generator(requests, node_map)
+        query_code = app.db_instance.query_Generator(requests, node_map)
         
         # Run the query and parse the results
-        result = db_instance.run_query(query_code, limit)
-        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = app.db_instance.run_query(query_code, limit)
+        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],
@@ -185,15 +182,13 @@ def update_request(annotation_id):
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
-
-        database_type = config['database']['type']
-        db_instance = databases[database_type]
+ 
         
-        requests = db_instance.parse_id(requests)
-        query_code = db_instance.query_Generator(requests, node_map)
+        requests = app.db_instance.parse_id(requests)
+        query_code = app.db_instance.query_Generator(requests, node_map)
 
-        result = db_instance.run_query(query_code, limit)
-        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = app.db_instance.run_query(query_code, limit)
+        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],
@@ -269,17 +264,16 @@ def process_email_query(current_user_id):
             if node_map is None:
                 return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
         
-            database_type = config['database']['type']
-            db_instance = databases[database_type]
+             
             
-            requests = db_instance.parse_id(requests)
+            requests = app.db_instance.parse_id(requests)
 
             # Generate the query code
-            query_code = db_instance.query_Generator(requests, node_map)
+            query_code = app.db_instance.query_Generator(requests, node_map)
         
             # Run the query and parse the results
-            result = db_instance.run_query(query_code)
-            parsed_result = db_instance.convert_to_dict(result, schema_manager.schema)
+            result = app.db_instance.run_query(query_code)
+            parsed_result = app.db_instance.convert_to_dict(result, schema_manager.schema)
             
             subject = 'Full Data'
             body = f'Hello {email} here is the full data you requested'
@@ -342,12 +336,11 @@ def process_user_history_by_id(current_user_id, id):
 
 
     try:
-        database_type = config['database']['type']
-        db_instance = databases[database_type]
+         
         
         # Run the query and parse the results
-        result = db_instance.run_query(query)
-        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = app.db_instance.run_query(query)
+        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],

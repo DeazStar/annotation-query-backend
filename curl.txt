@@ -4,7 +4,7 @@ curl -X GET http://localhost:5000/edges
 
 curl -X GET http://localhost:5000/relations/gene
 
-curl -X POST http://localhost:5000/query -H "Content-Type: application/json" -d '{
+curl -X POST http://localhost:5000/query   -H "Content-Type: application/json"   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoic29tZV9pZCJ9.6cqROhcxbZ8blMZq7dHA9laWqU0rOVjiMbpZ5UDvD04"    -d '{
   "requests": {
     
     "nodes": [
@@ -44,7 +44,7 @@ curl -X POST http://localhost:5000/query -H "Content-Type: application/json" -d 
         "target": "n2"
       },
       {
-        "type": "translates to",
+        "type": "transcribed to",
         "source": "n2",
         "target": "n3"
       }
@@ -140,3 +140,163 @@ curl -X POST http://localhost:8000/query \
       }
   }'
 
+curl -X POST http://localhost:5000/query   -H "Content-Type: application/json"   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoic29tZV9pZCJ9.6cqROhcxbZ8blMZq7dHA9laWqU0rOVjiMbpZ5UDvD04"   -d '{
+      "requests": {
+          "nodes": [
+              {
+                  "node_id": "n1",
+                  "id": "",
+                  "type": "gene",
+                  "properties": {
+                  }
+              },
+              {
+                  "node_id": "n2",
+                  "id": "",
+                  "type": "transcript",
+                  "properties": {
+
+                  }
+              }
+              ],
+              "logical_operator":"AND",
+          "predicates": [
+              {
+                  "type": "transcribed to",
+                  "source": "n1",
+                  "target": "n2"
+              }
+          ],
+           "predicates": [
+              {
+                  "type": "transcribed to",
+                  "source": "n1",
+                  "target": "n2"
+              }
+          ]
+      }
+  }'
+
+
+--------------------------------------------------------------------------------------
+modifyed query 
+{
+  "requests": {
+    "nodes": [
+      {
+        "node_id": "n1",
+        "id": "",
+        "type": "gene",
+        "properties": {}
+      },
+      {
+        "node_id": "n2",
+        "id": "",
+        "type": "transcript",
+        "properties": {}
+      },
+      {
+        "node_id": "n3",
+        "id": "",
+        "type": "protein",
+        "properties": {
+          "protein_name": "MKKS"
+        }
+      },
+      {
+        "node_id": "n4",
+        "id": "",
+        "type": "protein",
+        "properties": {
+          "protein_name": "MKKS"
+        }
+      },
+      {
+        "node_id": "n5",
+        "id": "",
+        "type": "protein",
+        "properties": {}
+      },
+      {
+        "node_id": "n6",
+        "id": "",
+        "type": "protein",
+        "properties": {
+          "protein_name": "MKKS"
+        }
+      }
+    ],
+    "predicates": [
+      {
+        "type": "transcribed to",
+        "source": "n1",
+        "target": "n2"
+      },
+      {
+        "type": "transcribed to",
+        "source": "n2",
+        "target": "n3"
+      },
+      {
+        "type": "transcribed to",
+        "source": "n3",
+        "target": "n4"
+      },
+      {
+        "type": "transcribed to",
+        "source": "n4",
+        "target": "n5"
+      }
+    ],
+    "logic": {
+      "children": [
+        {
+          "operator": "AND",
+          "predicates": [
+            {
+              "type": "transcribed to",
+              "source": "n1",
+              "target": "n2"
+            },
+            {
+              "type": "transcribed to",
+              "source": "n2",
+              "target": "n3"
+            }
+          ]
+        },
+        {
+          "operator": "OR",
+          "predicates": [
+            {
+              "type": "transcribed to",
+              "source": "n2",
+              "target": "n3"
+            },
+            {
+              "type": "transcribed to",
+              "source": "n3",
+              "target": "n4"
+            }
+          ]
+        },
+        {
+          "operator": "NOT",
+          "predicate": {
+            "type": "transcribed to",
+            "source": "n4",
+            "target": "n5"
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+
+
+
+
+
+ 

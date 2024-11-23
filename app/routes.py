@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 import threading
-from app import app, schema_manager
+from app import app, schema_manager,db_instance
 from app.lib import validate_request
 from flask_cors import CORS
 from app.lib import limit_graph
@@ -112,14 +112,14 @@ def process_query(current_user_id):
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
  
         #convert id to appropriate format
-        requests = app.db_instance.parse_id(requests)
+        requests = db_instance.parse_id(requests)
 
         # Generate the query code
-        query_code = app.db_instance.query_Generator(requests, node_map)
+        query_code = db_instance.query_Generator(requests, node_map)
         
         # Run the query and parse the results
-        result = app.db_instance.run_query(query_code, limit)
-        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = db_instance.run_query(query_code, limit)
+        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],
@@ -184,11 +184,11 @@ def update_request(annotation_id):
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
  
         
-        requests = app.db_instance.parse_id(requests)
-        query_code = app.db_instance.query_Generator(requests, node_map)
+        requests = db_instance.parse_id(requests)
+        query_code = db_instance.query_Generator(requests, node_map)
 
-        result = app.db_instance.run_query(query_code, limit)
-        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = db_instance.run_query(query_code, limit)
+        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],
@@ -266,14 +266,14 @@ def process_email_query(current_user_id):
         
              
             
-            requests = app.db_instance.parse_id(requests)
+            requests = db_instance.parse_id(requests)
 
             # Generate the query code
-            query_code = app.db_instance.query_Generator(requests, node_map)
+            query_code = db_instance.query_Generator(requests, node_map)
         
             # Run the query and parse the results
-            result = app.db_instance.run_query(query_code)
-            parsed_result = app.db_instance.convert_to_dict(result, schema_manager.schema)
+            result = db_instance.run_query(query_code)
+            parsed_result = db_instance.convert_to_dict(result, schema_manager.schema)
             
             subject = 'Full Data'
             body = f'Hello {email} here is the full data you requested'
@@ -339,8 +339,8 @@ def process_user_history_by_id(current_user_id, id):
          
         
         # Run the query and parse the results
-        result = app.db_instance.run_query(query)
-        parsed_result = app.db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        result = db_instance.run_query(query)
+        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
         response_data = {
             "nodes": parsed_result[0],

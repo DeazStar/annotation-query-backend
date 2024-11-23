@@ -16,8 +16,7 @@ class StorageService():
  
         try:
             data.save()  # Saving to MongoDB
-            print (" data saved id ",data._id)
-            print("Data saved successfully")
+            
         except MongoException as e:
             logging.error(f"Error saving data: {e}")
             raise

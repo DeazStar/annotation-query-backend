@@ -15,7 +15,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         self.dataset_path = dataset_path
         self.load_dataset(self.dataset_path)
 
-    def initialize_space(self) -> None:
+    def initialize_space(self):
         self.metta.run("!(bind! &space (new-space))")
 
 
@@ -35,18 +35,18 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 logging.error(f"Error loading dataset from '{path}': {e}")
         logging.info(f"Finished loading {len(paths)} datasets.")
 
-    def generate_id(self) -> str:
+    def generate_id(self):
         import uuid
         return str(uuid.uuid4())[:8]
 
-    def construct_node_representation(self, node: str, identifier: str) -> None:
+    def construct_node_representation(self, node, identifier):
         node_type = node['type']
         node_representation = ''
         for key, value in node['properties'].items():
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def query_Generator(self, data: dict, node_map: dict) -> str:
+    def query_Generator(self, data,node_map):
         nodes = data['nodes']
 
         metta_output = '''!(match &space (,'''
@@ -117,7 +117,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         return metta_output
 
 
-    def run_query(self, query_code, limit=None):
+    def run_query(self, query_code, limit=None, apply_limit=True):
         return self.metta.run(query_code)
 
     def parse_and_serialize(self, input, schema, all_properties):

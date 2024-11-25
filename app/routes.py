@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from distutils.util import strtobool
 import datetime
 from pymongoose.mongo_types import MongoException
-
+logging.basicConfig(level=logging.DEBUG)
 # Load environmental variables
 load_dotenv()
 
@@ -84,40 +84,28 @@ def get_relations_for_node_endpoint(current_user_id, node_label):
 @app.route('/query', methods=['POST'])
 @token_required
 def process_query(current_user_id):
-    data = request.get_json()
-    if not data or 'requests' not in data:
-        return jsonify({"error": "Missing requests data"}), 400
-    
-    limit = request.args.get('limit')
-    properties = request.args.get('properties')
-    
-    if properties:
-        properties = bool(strtobool(properties))
-    else:
-        properties = False
-
-    if limit:
-        try:
-            limit = int(limit)
-        except ValueError:
-            return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
-    else:
-        limit = None
     try:
+        logging.debug("Received POST request at /query")
+        data = request.get_json()
+        if not data or 'requests' not in data:
+            return jsonify({"error": "Missing requests data"}), 400
+        
+        limit = request.args.get('limit', default=None, type=int)
+        properties = bool(strtobool(request.args.get('properties', 'false')))
+        
         requests = data['requests']
         
-        # Validate the request data before processing
+        # Validate request data
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
- 
-        #convert id to appropriate format
+
         requests = db_instance.parse_id(requests)
 
         # Generate the query code
         query_code = db_instance.query_Generator(requests, node_map)
         
-        # Run the query and parse the results
+        # Run the query and parse results
         result = db_instance.run_query(query_code, limit)
         parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
         
@@ -129,101 +117,95 @@ def process_query(current_user_id):
         if isinstance(query_code, list):
             query_code = query_code[0]
 
+        # Check if query already exists
         existing_query = storage_service.get_user_query(str(current_user_id), query_code)
-
         if existing_query is None:
             title = llm.generate_title(query_code)
             summary = llm.generate_summary(response_data)
-
             storage_service.save(str(current_user_id), query_code, title, summary)
         else:
             title = existing_query.title
             summary = existing_query.summary
             storage_service.update(existing_query.id, {"updated_at": datetime.datetime.now()})
-
+        
         response_data["title"] = title
         response_data["summary"] = summary
 
-
-        # if limit:
-        #     response_data = limit_graph(response_data, limit)
-
-        formatted_response = json.dumps(response_data, indent=4)
-        return Response(formatted_response, mimetype='application/json')
+        return Response(json.dumps(response_data, indent=4), mimetype='application/json')
     except Exception as e:
-        logging.error(f"Error processing query: {e}")
+        logging.error(f"Error processing query: {e}", exc_info=True)
         return jsonify({"error": str(e)}), 500
-    
 
-@app.route('/update-request/<string:annotation_id>', methods=['POST'])
-def update_request(annotation_id):
-    data = request.get_json()
-    if not data or 'requests' not in data:
-        return jsonify({"error": "Missing requests data"}), 400
-    
-    limit = request.args.get('limit')
-    properties = request.args.get('properties')
-    
-    if properties:
-        properties = bool(strtobool(properties))
-    else:
-        properties = False
 
-    if limit:
+    @app.route('/update-request/<string:annotation_id>', methods=['POST'])
+    def update_request(annotation_id):
+        data = request.get_json()
+        if not data or 'requests' not in data:
+            return jsonify({"error": "Missing requests data"}), 400
+        
+        limit = request.args.get('limit')
+        properties = request.args.get('properties')
+        
+        if properties:
+            properties = bool(strtobool(properties))
+        else:
+            properties = False
+
+        if limit:
+            try:
+                limit = int(limit)
+            except ValueError:
+                return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
+        else:
+            limit = None
+
         try:
-            limit = int(limit)
-        except ValueError:
-            return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
-    else:
-        limit = None
+            requests = data['requests']
+            node_map = validate_request(requests, schema_manager.schema)
+            if node_map is None:
+                return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
+    
+            
+            requests = db_instance.parse_id(requests)
+            query_code = db_instance.query_Generator(requests, node_map)
 
-    try:
-        requests = data['requests']
-        node_map = validate_request(requests, schema_manager.schema)
-        if node_map is None:
-            return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
- 
-        
-        requests = db_instance.parse_id(requests)
-        query_code = db_instance.query_Generator(requests, node_map)
+            result = db_instance.run_query(query_code, limit)
+            parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+            
+            response_data = {
+                "nodes": parsed_result[0],
+                "edges": parsed_result[1]
+            }
 
-        result = db_instance.run_query(query_code, limit)
-        parsed_result = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
-        
-        response_data = {
-            "nodes": parsed_result[0],
-            "edges": parsed_result[1]
-        }
+            if isinstance(query_code, list):
+                query_code = query_code[0]
+            
+            title = llm.generate_title(query_code)
+            summary = llm.generate_summary(response_data)
+            
+            existing_record = storage_service.get_by_id(annotation_id)
+            if not existing_record:
+                return jsonify({"error": "Record not found"}), 404
 
-        if isinstance(query_code, list):
-            query_code = query_code[0]
-         
-        title = llm.generate_title(query_code)
-        summary = llm.generate_summary(response_data)
-         
-        existing_record = storage_service.get_by_id(annotation_id)
-        if not existing_record:
-            return jsonify({"error": "Record not found"}), 404
+            updated_data = {
+                "title": title,
+                "query": query_code,
+                "summary": summary,
+                "updated_at": datetime.datetime.now()
+            }
+            storage_service.update(annotation_id, updated_data)
 
-        updated_data = {
-            "title": title,
-            "query": query_code,
-            "summary": summary,
-            "updated_at": datetime.datetime.now()
-        }
-        storage_service.update(annotation_id, updated_data)
+            return jsonify({
+                "message": "Request updated successfully",
+                "updated_data": updated_data
+            }), 200
 
-        return jsonify({
-            "message": "Request updated successfully",
-            "updated_data": updated_data
-        }), 200
-
-    except MongoException as e:
-        logging.error(f"Database error: {e}")
-        return jsonify({"error": "Database error occurred"}), 500
-    except Exception as e:
-        logging.error(f"Error updating request: {e}")
-        return jsonify({"error": str(e)}), 500
+        except MongoException as e:
+            logging.error(f"Database error: {e}")
+            return jsonify({"error": "Database error occurred"}), 500
+        except Exception as e:
+            logging.error(f"Error updating request: {e}")
+            return jsonify({"error": str(e)}), 500
 @app.route('/delete_annotation/<string:annotation_id>', methods=['DELETE'])
 def delete_annotation(annotation_id):
     try:

@@ -150,21 +150,32 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             where_clause = f"WHERE {' AND '.join(where_no_preds)}"
             return f"{match_clause} {where_clause} {return_clause}"
         return f"{match_clause} {return_clause}"
-
     def construct_union_clause(self, match_preds, return_preds, where_preds ,match_no_preds, return_no_preds, where_no_preds):
-        where_clause = ""
-        where_no_clause = ""
-        match_preds = f"MATCH {', '.join(match_preds)}"
-        tmp_return_preds = return_preds
-        return_preds = f"RETURN {', '.join(return_preds)} , null AS {', null AS '.join(return_no_preds)}"
-        if len(where_preds) > 0:
-            where_clause = f"WHERE {' AND '.join(where_preds)}"
-        match_no_preds = f"MATCH {', '.join(match_no_preds)}"
-        return_no_preds = f"RETURN  {', '.join(return_no_preds)} , null AS {', null AS '.join(tmp_return_preds)}"
-        if len(where_no_preds) > 0:
-            where_no_clause = f"WHERE {' AND '.join(where_no_preds)}"
-        query = f"{match_preds} {where_clause} {return_preds} UNION {match_no_preds} {where_no_clause} {return_no_preds}"
-        return query
+            where_clause = ""
+            where_no_clause = ""
+            match_preds = f"MATCH {', '.join(match_preds)}"
+            tmp_return_preds = return_preds
+            return_preds = f"RETURN {', '.join(return_preds)} , null AS {', null AS '.join(return_no_preds)}"
+            if len(where_preds) > 0:
+                where_clause = f"WHERE {' AND '.join(where_preds)}"
+            match_no_preds = f"MATCH {', '.join(match_no_preds)}"
+            return_no_preds = f"RETURN  {', '.join(return_no_preds)} , null AS {', null AS '.join(tmp_return_preds)}"
+            if len(where_no_preds) > 0:
+                where_no_clause = f"WHERE {' AND '.join(where_no_preds)}"
+            
+            query = f"""
+    CALL {{
+        {match_no_preds}
+        {where_no_clause}
+        {return_no_preds}
+    }}
+    CALL {{
+        {match_preds}
+        {where_clause}
+        {return_preds}
+    }}
+    RETURN *
+    """
 
     def match_node(self, node, var_name):
         if node['id']:

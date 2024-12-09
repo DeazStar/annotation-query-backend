@@ -11,7 +11,6 @@ class Graph_Summarizer:
     '''
     def __init__(self,llm) -> None:
         self.llm = llm
-        self.llm = llm
       
         if self.llm.__class__.__name__ == 'GeminiModel':
             self.max_token=2000

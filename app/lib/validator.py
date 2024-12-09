@@ -46,10 +46,14 @@ def validate_request(request, schema):
     # validate predicates
     if 'predicates' in request:
         predicates = request['predicates']
-            
+        predicate_ids = []
+
         if not isinstance(predicates, list):
             raise Exception("Predicate should be a list")
         for predicate in predicates:
+            if "predicate_id" in predicate:
+                predicate_ids.append(predicate["predicate_id"])
+
             if 'type' not in predicate or predicate['type'] == "":
                 raise Exception("predicate type is required")
             if 'source' not in predicate or predicate['source'] == "":
@@ -72,4 +76,62 @@ def validate_request(request, schema):
             predicate_type = f'{source_type}-{predicate_type}-{target_type}'
             if predicate_type not in schema:
                 raise Exception(f"Invalid source and target for the predicate {predicate['type']}")
+    
+    # validate the logic if present
+    if 'logic' in request:
+        logic = request['logic']
+
+        if not isinstance(logic, dict):
+            raise Exception("logic should be a dict")
+
+        if 'children' not in logic:
+            raise Exception("children Key is required")
+
+        children = logic["children"]
+        if not isinstance(children, list):
+            raise Exception("children should be a list")
+
+        for child in children:
+            if not isinstance(child, dict):
+                raise Exception("child should be a dict")
+
+            if 'operator' not in child:
+                raise Exception("operator key is required")
+            if not isinstance(child['operator'], str):
+                raise Exception("operator value must be instance of string")
+            if child['operator'] not in ["NOT"]:
+                raise Exception("operator value must be in NOT")
+
+            if "nodes" in child:
+                if not isinstance(child["nodes"], dict):
+                    raise Exception("nodes value must be a dict")
+
+                nodes = child["nodes"]
+            
+                if "node_id" not in nodes:
+                    raise Exception("nodes value must have node_id key")
+                if not isinstance(nodes["node_id"], str):
+                    raise Exception("node_id must be an instance of a string")
+                if nodes["node_id"] not in node_map:
+                    raise Exception("invalid node_id: no matching node_id found in the declared nodes above")
+
+                if "properties" in nodes:
+                    
+                    if not isinstance(nodes["properties"], dict):
+                        raise Exception("properties should be a dict")
+                    
+            if "predicates" in child:
+                
+                if not isinstance(child["predicates"], dict):
+                    raise Exception("predicates value must be a dict")
+
+                predicates = child["predicates"]
+                if "predicate_id" not in predicates:
+                    raise Exception("predicate value must have a prdicate_id key")
+                if not isinstance(nodes["predicate_id"], str):
+                    raise Exception("predicare_id value must be an instance of a string")
+                if predicates["predicate_id"] not in predicate_ids:
+                    raise Exception("invalid predicate_id: no matching predicate_id fournd in the decalred predicates above")
+
+
     return node_map

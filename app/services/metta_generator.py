@@ -120,6 +120,15 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
     def run_query(self, query_code, limit=None, apply_limit=True):
         return self.metta.run(query_code)
 
+    def logic_node(self, request_logic):
+        
+        nodes = set()
+        children = request_logic["children"]
+        for operation in children:
+            nodes.add(operation['nodes']['node_id'])
+
+        return nodes
+
     def parse_and_serialize(self, input, schema, all_properties):
         result = self.prepare_query_input(input, schema)
         result = self.parse_and_serialize_properties(result[0], all_properties)

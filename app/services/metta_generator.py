@@ -52,6 +52,8 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         metta_output = '''!(match &space (,'''
         output = ''' (,'''
  
+        logic = data.get('logic', None)
+        logic_dict = self.logic_node(logic)
         node_without_predicate = None
         predicates = None
         if "predicates" not in data:
@@ -72,14 +74,25 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 node_identifier = '$' + node["node_id"]
                 if node["id"]:
                     essemble_id = node["id"]
-                    metta_output += f' ({node_type} {essemble_id})'
-                    output += f' ({node_type} {essemble_id})'
+                    if logic is None or  node_id not in logic_dict:
+                        metta_output += f' ({node_type} {essemble_id})'
+                        output += f' ({node_type} {essemble_id})'
+                    else:
+                        print(node_id, node_id in logic_dict)
+                        output += f' (not_id {node_type} {essemble_id})'
                 else:
                     if len(node["properties"]) == 0:
-                        metta_output += f' ({node_type} ${node_id})'
-                    else:
-                        metta_output += self.construct_node_representation(node, node_identifier)
-                    output += f' ({node_type} {node_identifier})'
+                        if logic is None and node_id not in logic_dict:
+                            metta_output += f' ({node_type} ${node_id})'
+                            output += f' ({node_type} {node_identifier})'
+                        else:
+                            output += f' (not_node {node_type})'
+                    else: 
+                        if logic is None or node_id not in logic_dict:
+                            metta_output += self.construct_node_representation(node, node_identifier)
+                            output += f' ({node_type} {node_identifier})'
+                        else:
+                            output += f' (not_id {node_type} {node_identifier})'
         
         if predicates is None:
             return metta_output
@@ -122,10 +135,18 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
 
     def logic_node(self, request_logic):
         
-        nodes = set()
+        if request_logic == None:
+            return None
+
+        nodes = {}
         children = request_logic["children"]
         for operation in children:
-            nodes.add(operation['nodes']['node_id'])
+            if "nodes" in operation:
+                node_id = operation["nodes"]["node_id"]
+                if node_id in nodes:
+                    nodes[node_id].append(operation['nodes'])
+                else:
+                    nodes[node_id] = [operation['nodes']]
 
         return nodes
 

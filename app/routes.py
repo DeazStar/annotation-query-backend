@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 import threading
-from app import app, databases, schema_manager, db_instance
+from app import app, schema_manager, db_instance
 from app.lib import validate_request
 from flask_cors import CORS
 from app.lib import limit_graph
@@ -133,9 +133,10 @@ def process_query(current_user_id):
         else:
             existing_query = None
 
+        print(response_data)
         if existing_query is None:
             title = llm.generate_title(query_code)
-            summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) else 'Graph to big could not summarize'
+            summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) != None else 'Graph to big could not summarize'
             answer = llm.generate_summary(response_data, question, True, summary) if question else None
             node_count = response_data['node_count']
             edge_count = response_data['edge_count'] if "edge_count" in response_data else 0

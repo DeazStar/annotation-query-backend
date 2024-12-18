@@ -3,6 +3,7 @@ import os
 from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
+from app.lib.metta_ground import Metta_ground
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -14,6 +15,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         self.initialize_space()
         self.dataset_path = dataset_path
         self.load_dataset(self.dataset_path)
+        self.initialize_groundatoms()
 
     def initialize_space(self):
         self.metta.run("!(bind! &space (new-space))")
@@ -35,6 +37,9 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 logging.error(f"Error loading dataset from '{path}': {e}")
         logging.info(f"Finished loading {len(paths)} datasets.")
 
+    def initialize_groundatoms(self):
+        Metta_ground(self.metta)        
+
     def generate_id(self):
         import uuid
         return str(uuid.uuid4())[:8]
@@ -50,7 +55,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         nodes = data['nodes']
 
         metta_output = '''!(match &space (,'''
-        output = ''' (,'''
+        output = ''' (, '''
  
         logic = data.get('logic', None)
         logic_dict = self.logic_node(logic)
@@ -74,11 +79,10 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 node_identifier = '$' + node["node_id"]
                 if node["id"]:
                     essemble_id = node["id"]
-                    if logic is None or  node_id not in logic_dict:
+                    if logic is None or node_id not in logic_dict:
                         metta_output += f' ({node_type} {essemble_id})'
                         output += f' ({node_type} {essemble_id})'
                     else:
-                        print(node_id, node_id in logic_dict)
                         output += f' (not_id {node_type} {essemble_id})'
                 else:
                     if len(node["properties"]) == 0:
@@ -126,7 +130,6 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             output += f' ({predicate_type} {source} {target})'
 
         metta_output += f' ){output}))'
-        # print("metta_output:", metta_output)
         return metta_output
 
 
@@ -136,7 +139,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
     def logic_node(self, request_logic):
         
         if request_logic == None:
-            return None
+            return {}
 
         nodes = {}
         children = request_logic["children"]
@@ -167,6 +170,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         for result in results:
             source = result['source']
             source_node_type = result['source'].split(' ')[0]
+            source_node_type = source_node_type.replace("_", " ")
 
             if source not in nodes:
                 for property, _ in schema[source_node_type]['properties'].items():
@@ -313,7 +317,6 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 "source": f"{src_type} {src_id}",
                 "target": f"{tgt_type} {tgt_id}"
                 })
-
         query = self.get_node_properties(result, schema)
         result = self.run_query(query)
         return result

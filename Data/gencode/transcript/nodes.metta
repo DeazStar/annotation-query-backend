@@ -8,7 +8,6 @@
 (gene_name (transcript ENST00000353224) PAK5)
 (source (transcript ENST00000353224) GENCODE)
 (source_url (transcript ENST00000353224) https://www.gencodegenes.org/human/)
-
 (transcript ENST00000353224)
 (transcript_id (transcript ENST00000353224) ENST00000353224.10)
 (transcript_name (transcript ENST00000353224) PAK5-201)

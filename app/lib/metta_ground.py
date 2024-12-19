@@ -16,12 +16,12 @@ class Metta_ground:
         self.metta.register_atom("not_id", not_id)
 
     
-    def not_nodes(self, node):
+    def not_nodes(self, *nodes):
         query = f"!(match &space ($a $n1) ($a $n1))"
         results = self.metta.run(query)
         output = []
         for result in results[0]:
-            if result.get_children()[0] != node:
+            if result.get_children()[0] not in nodes:
                 output.append(result)
         return output
     

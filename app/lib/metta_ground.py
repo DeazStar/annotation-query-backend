@@ -25,11 +25,11 @@ class Metta_ground:
                 output.append(result)
         return output
     
-    def not_ids(self, node, node_id:str):
+    def not_ids(self, node, *node_ids):
         query = f"!(match &space ({node} $n1) ({node} $n1))"
         results = self.metta.run(query)
         output = []
         for result in results[0]:
-            if result.get_children()[1] != node_id:
+            if result.get_children()[1] not in node_ids:
                 output.append(result)
         return output

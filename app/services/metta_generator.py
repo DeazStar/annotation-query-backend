@@ -62,6 +62,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         node_without_predicate = None
         predicates = None
         not_node = []
+        not_id = {}
         if "predicates" not in data:
             node_without_predicate = nodes
         else:
@@ -84,7 +85,10 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                         metta_output += f' ({node_type} {essemble_id})'
                         output += f' ({node_type} {essemble_id})'
                     else:
-                        output += f' (not_id {node_type} {essemble_id})'
+                        if node_type in not_id:
+                            not_id[node_type].append(essemble_id)
+                        else:
+                            not_id[node_type] = [essemble_id]
                 else:
                     if len(node["properties"]) == 0:
                         if logic is None or node_id not in logic_dict:
@@ -100,7 +104,10 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                             output += f' (not_id {node_type} {node_identifier})'
             if len(not_node) > 0:
                 output += " (not_node " + " ".join(not_node) + ")"
-        
+
+            for node_type, node_ids in not_id.items():
+                output += f" (not_id {node_type} " + " ".join(node_ids) + ")"
+
         if predicates is None:
             return metta_output
 
@@ -214,7 +221,6 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
 
     def metta_seralizer(self, metta_result):
         result = []
-
         for node in metta_result:
             node = node.get_children()
             for metta_symbol in node:

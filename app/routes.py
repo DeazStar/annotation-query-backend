@@ -4,7 +4,7 @@ import json
 import yaml
 import os
 import threading
-from app import app, databases, schema_manager, db_instance
+from app import app, schema_manager, db_instance
 from app.lib import validate_request
 from flask_cors import CORS
 from app.lib import limit_graph
@@ -90,6 +90,7 @@ def process_query(current_user_id):
     else:
         limit = None
     try:
+        print("hiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii")
         requests = data['requests']
         annotation_id = None
         question = None
@@ -102,19 +103,25 @@ def process_query(current_user_id):
             question = requests['question']
         
         # Validate the request data before processing
+        print("do i pass____________________________________________----")
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
 
         #convert id to appropriate format
-        requests = db_instance.parse_id(requests)
+        # requests = db_instance.parse_id(requests)
 
         # Generate the query code
+        print("do i pass_______________________here_____________________----")
         query_code = db_instance.query_Generator(requests, node_map, limit)
-        
+        print("do i pass__________________________now__________________----")
+        print("query_code ",query_code)
         # Run the query and parse the results
         result = db_instance.run_query(query_code)
+        
+        print("do i pass__________________________nofw__________________----")
         response_data = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        print("do i pass___________________________ff_________________----")
 
         # Extract node types
         nodes = requests['nodes']
@@ -124,18 +131,20 @@ def process_query(current_user_id):
             node_types.add(node["type"])
 
         node_types = list(node_types)
+        print("do i pass____________________________________________----")
 
         if isinstance(query_code, list):
             query_code = query_code[0]
-
+        print("do i pass____________________________________________----")
         if annotation_id:
             existing_query = storage_service.get_user_query(annotation_id, str(current_user_id), query_code)
         else:
             existing_query = None
 
+        print(response_data)
         if existing_query is None:
             title = llm.generate_title(query_code)
-            summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) else 'Graph to big could not summarize'
+            summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) != None else 'Graph to big could not summarize'
             answer = llm.generate_summary(response_data, question, True, summary) if question else None
             node_count = response_data['node_count']
             edge_count = response_data['edge_count'] if "edge_count" in response_data else 0

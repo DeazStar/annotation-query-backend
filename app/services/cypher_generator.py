@@ -60,8 +60,11 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         
         results = []
         if isinstance(query_code, list):
+             
             find_query = query_code[0]
             #count_query = query_code[1]
+            # print("query code ",query_code)
+
         else:
             find_query = query_code
             count_query = None
@@ -69,9 +72,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         with self.driver.session() as session:
             results.append(list(session.run(find_query)))
 
-       # if count_query:
-            #with self.driver.session() as session:
-                #results.append(list(session.run(count_query)))
+        # if count_query:
+        #     with self.driver.session() as session:
+        #         results.append(list(session.run(count_query)))
 
         return results
 
@@ -96,6 +99,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         return_clause_or=None
         value=False
         return_clause=None
+        
         # define a set of nodes with predicates
         node_predicates = {p['source'] for p in predicates}.union({p['target'] for p in predicates})
 
@@ -130,8 +134,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     "where_clause": where_no_preds,
                 }
             cypher_query = self.construct_clause(query_clauses, limit)
-            print("_____________________________final code ____________________________________")
-            print(cypher_query)
+ 
+            
             cypher_queries.append(cypher_query)
             query_clauses = {
                     "match_no_preds": match_no_preds,
@@ -139,11 +143,14 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     "where_no_preds": where_no_preds,
                     "list_of_node_ids": list_of_node_ids,
                 }
+            print(":_____count _______________________________________",count )
             count = self.construct_count_clause(query_clauses)
+            print(":_____count _______________________________________",count )
+            
             cypher_queries.append(count)
-            print("---------------------------final_code after count ____________________________________")
-             
+            print (" whend  count is added to cypher query _____________________-",cypher_queries)
 
+             
         else:
             
             for i, predicate in enumerate(predicates):
@@ -152,7 +159,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 target_node = node_map[predicate['target']]
                 source_var = source_node['node_id']
                 target_var = target_node['node_id']
+                
 
+        
                 # Common match and return part
                 
 
@@ -175,8 +184,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                    
                     if return_clause:
                         return_clause+=f", r{i}"
-                    else:
-                        return_preds.append(f"r{i}")
+                    return_preds.append(f"r{i}")
                      
 
 
@@ -216,11 +224,6 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     'where_clause': where_preds
                      
                 }
-
-                # Debugging output
-                 
-
-                # Construct Cypher query
                 
                 cypher_query = self.construct_clause(query_clauses, limit)
                 cypher_queries.append(cypher_query)
@@ -233,6 +236,11 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     "list_of_node_ids": list(node_ids),
                     "return_preds": return_preds
                 }
+                count = self.construct_count_clause(query_clauses)
+                #cypher_queries.append(count)
+                print("______________________________ new added count ___________________")
+                print("i have added count ",count )
+                print("______________________________ new added count ___________________")
 
 
 
@@ -254,9 +262,13 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
                 cypher_query = self.construct_union_clause(query_clauses, limit)
                 cypher_queries.append(cypher_query)
+         
 
-                count = self.construct_count_clause(query_clauses)
-                cypher_queries.append(count)
+                #count = self.construct_count_clause(query_clauses)
+               
+                #cypher_queries.append(count)
+
+                print("cypher quires ",cypher_queries)
              
             print("_________________________________final________________________________")
             print(cypher_queries)
@@ -265,8 +277,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             
     
     def construct_clause(self, query_clauses,limit ):
-        
-    
+      
         match_clause = f"MATCH {', '.join(query_clauses['match_clause'])}"
        
        
@@ -338,7 +349,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         with_clause = ''
         unwind_clause = ''
         return_clause = ''
-
+    
+         
         # Check and construct clause for match with no predicates
         if 'match_no_preds' in query_clauses and query_clauses['match_no_preds']:
             match_no_clause = f"MATCH {', '.join(query_clauses['match_no_preds'])}"
@@ -408,7 +420,16 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     no_label_ids['no_predicate_labels'].update(no_label_id['no_predicate_labels'])
 
             elif logic['operator'] == "OR":
+
                 where_query, return_clause=self.construct_or_operation(logic, node_map, predicate_map)
+             
+
+          
+                if logic['children'] :
+                    for child in logic['children']:
+                        if 'predicates' in child:
+                            where_clauses['where_preds'].append(where_query)
+                            break
                 if 'predicates' in logic:
                     
                     where_clauses['where_preds'].append(where_query)
@@ -419,8 +440,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         # Return statement should be outside the loop, after all iterations
     
-        
+  
         return where_clauses, return_clause,no_label_ids
+        
 
 
 
@@ -428,9 +450,21 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                         
               
 
-    def construct_not_operation(self, logic, node_map, predicate_map):
+    def construct_not_operation(self, logic, node_map, predicate_map,logic_all=False):
         where_clause = ''
         no_label_id = {'no_node_labels': set(), 'no_predicate_labels': set()}
+        predicate_dict = {}
+
+        # to enumerate predicate id with relationship
+        for idx, child in enumerate(logic_all['children']):
+            # Check if 'predicates' exists in the child
+            if 'predicates' in child:
+                predicate_id = child['predicates']['predicate_id']
+                # Assign the index to the predicate_id in the dictionary
+                predicate_dict[predicate_id] = f"r{idx}"
+
+
+
 
         if 'nodes' in logic:
             node_id = logic['nodes']['node_id']
@@ -443,13 +477,17 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 where_clause = f'NOT ({node_id}: {node_type})'
 
         elif 'predicates' in logic:
+            
             predicate_id = logic['predicates']['predicate_id']
             predicate = predicate_map[predicate_id]
             label = predicate['type'].replace(" ", "_").lower()
             no_label_id['no_node_labels'].update([predicate['source'], predicate['target']])
             no_label_id['no_predicate_labels'].add(predicate_id)
-            where_clause = f"type({predicate_id}) <> '{label}'"
-        return where_clause, no_label_id
+       
+            if predicate_id in predicate_dict:
+
+                where_clause = f"type({predicate_dict[predicate_id]}) <> '{label}'"
+        return where_clause, no_label_id,predicate_id
     #TODO :OR clause 
     def construct_or_operation(self, logic, node_map, predicate_map):
         where_clause = ""  # Initialize as a string to hold combined conditions
@@ -483,12 +521,49 @@ class CypherQueryGenerator(QueryGeneratorInterface):
   
 
         # Handle predicates
+
+        #TODO:combination of not and or 
+        predicate_id_OR_NOT = []
+
+    # Check if 'children' exists in the logic dictionary
+        if "children" in logic:
+            for child in logic['children']:
+                # Handle the 'NOT' operator case
+                if "operator" in child and child['operator'] == 'NOT':
+                    print("step1",child)
+
+                    where_query, no_label_id, predicate_id = self.construct_not_operation(child, node_map, predicate_map,logic)
+                    print("step2 ")
+                     
+                    print("print predicate id and not 1",predicate_id_OR_NOT)
+                    predicate_not = predicate_id
+                    
+                # Handle the 'predicates' case
+                if "predicates" in child:
+                    predicate_id = child['predicates']['predicate_id']
+                    predicate_id_OR_NOT.append(predicate_id)
+                    print("print predicate id and not 2",predicate_id_OR_NOT)
+                    
+            # Initialize logic dictionary with required keys
+            logic = {
+                'predicates': predicate_id_OR_NOT,
+                'where_query': where_query,
+                'no_label_id': no_label_id,
+                'predicate_not': predicate_not
+            }
+
+            # Debug prints to ensure correctness
        
+        
 
         if logic and 'predicates' in logic:
             for predicate_id in logic['predicates']:
                 if predicate_id in predicate_map:
+                    if predicate_id==logic['predicate_not']:
+                        where_clause.append(logic['where_query'])
+                        continue
                     predicate = predicate_map[predicate_id]
+                    
                     source_node = predicate['source']
                     target_node = predicate['target']
                      
@@ -502,6 +577,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                             condition=f"{source_node}.id = '{node_map[source_node]['id']}'"
                             source_conditions.append(condition)
                             where_clause_dict[condition] = source_node
+                            
                         if 'properties' in node_map[source_node] and  node_map[source_node]['properties']:
                             for key, value in node_map[source_node]['properties'].items():
                                 condition=f"{source_node}.{key} = '{value}'"
@@ -530,7 +606,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                             if target_conditions:
                                 where_clause.append(target_conditions[0])
                                  
-
+            print("where clause",where_clause)
             if where_clause:
                 combined_conditions= " OR ".join(where_clause)
                 where_clause=f"({combined_conditions})"
@@ -552,7 +628,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     return_clause+= f"{node}  "
 
             return_clause = return_clause.rstrip(", ")
-  
+            print("final where clause ",where_clause)
             return where_clause, return_clause
             
 
@@ -628,6 +704,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
     def process_result(self, results, all_properties):
         match_result = results[0]
+        print("match result_______________",match_result)
         if len(results) > 1:
             count_result = results[1]
         else:
@@ -646,8 +723,41 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         named_types = ['gene_name', 'transcript_name', 'protein_name', 'pathway_name', 'term_name']
 
         for record in match_result:
-            for item in record.values():
-                if isinstance(item, neo4j.graph.Node):
+            print("record is here",record)
+            for key, item in record.items():
+                if item is None:
+                    print("MOVING ON")
+                    continue
+                elif isinstance(item, list):
+                    print("ITS A LIST")
+                    for sub_item in item:
+                        node_id = f"{list(sub_item.labels)[0]} {sub_item['id']}"
+                        if node_id not in node_dict:
+                            node_data = {
+                                "data": {
+                                    "id": node_id,
+                                    "type": list(sub_item.labels)[0],
+                                }
+                            }
+
+                            for key, value in sub_item.items():
+                                if all_properties:
+                                    if key != "id" and key != "synonyms":
+                                        node_data["data"][key] = value
+                                else:
+                                    if key in named_types:
+                                        node_data["data"]["name"] = value
+                            if "name" not in node_data["data"]:
+                                node_data["data"]["name"] = node_id
+                            nodes.append(node_data)
+                            if node_data["data"]["type"] not in node_type:
+                                node_type.add(node_data["data"]["type"])
+                                node_to_dict[node_data['data']['type']] = []
+                            node_to_dict[node_data['data']['type']].append(node_data)
+                            node_dict[node_id] = node_data
+
+                elif isinstance(item, neo4j.graph.Node):
+                    print("NODE: ", item)
                     node_id = f"{list(item.labels)[0]} {item['id']}"
                     if node_id not in node_dict:
                         node_data = {
@@ -673,11 +783,26 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                         node_to_dict[node_data['data']['type']].append(node_data)
                         node_dict[node_id] = node_data
                 elif isinstance(item, neo4j.graph.Relationship):
-                    source_id = f"{list(item.start_node.labels)[0]} {item.start_node['id']}"
-                    target_id = f"{list(item.end_node.labels)[0]} {item.end_node['id']}"
+                    print("-----------")
+                    print("RELATIONSHIP: ", item)
+                    print("-------------")
+                    source_labels = list(item.start_node.labels)
+                    if source_labels:
+                        source_id = f"{source_labels[0]} {item.start_node['id']}"
+                    else:
+                        continue
+                    
+
+
+
+                    target_labels = list(item.end_node.labels)
+
+                    if target_labels:
+                        target_id = f"{target_labels[0]} {item.end_node['id']}"
+                    else:
+                        continue
                     edge_data = {
                         "data": {
-                            # "id": item.id,
                             "label": item.type,
                             "source": source_id,
                             "target": target_id,
@@ -703,6 +828,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             for count_record in count_result:
                 node_count = count_record.get('total_nodes')
                 edge_count = count_record.get('total_edges', 0)
+        print("FINISHED PROCESSING")
     
         return (nodes, edges, node_to_dict, edge_to_dict, node_count, edge_count)
 

@@ -63,6 +63,8 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         predicates = None
         not_node = []
         not_id = {}
+        not_property = {}
+
         if "predicates" not in data:
             node_without_predicate = nodes
         else:
@@ -101,13 +103,20 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                             metta_output += self.construct_node_representation(node, node_identifier)
                             output += f' ({node_type} {node_identifier})'
                         else:
-                            output += f' (not_id {node_type} {node_identifier})'
+                            if node_type in not_property:
+                                not_property[node_type].update(node['properties'])
+                            else:
+                                not_property[node_type] = node['properties']
             if len(not_node) > 0:
                 output += " (not_node " + " ".join(not_node) + ")"
 
             for node_type, node_ids in not_id.items():
                 output += f" (not_id {node_type} " + " ".join(node_ids) + ")"
 
+            for node_type, node_property in not_property.items():
+                output += f" (not_property {node_type} (" + " ".join(list(node_property.keys())) + ") (" + " ".join(list(node_property.values())) + "))" 
+                    
+    
         if predicates is None:
             return metta_output
 

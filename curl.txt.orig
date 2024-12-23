@@ -1,4 +1,113 @@
 curl -X GET http://localhost:5000/nodes 
+<<<<<<< HEAD
+
+curl -X GET http://localhost:5000/edges
+
+curl -X GET http://localhost:5000/relations/gene
+
+curl -X POST http://localhost:5000/query -H "Content-Type: application/json" -d '{
+  "requests": {
+    "nodes": [
+      {
+        "node_id": "n1",
+        "id": "",
+        "type": "gene",
+        "properties": {}
+      },
+      {
+        "node_id": "n2",
+        "id": "",
+        "type": "transcript",
+        "properties": {}
+      },
+      {
+        "node_id": "n3",
+        "id": "",
+        "type": "protein",
+          "properties": {
+          "protein_name": "MKKS"
+        }
+      },
+      {
+        "node_id": "n4",
+        "id": "",
+        "type": "protein",
+          "properties": {
+          "protein_name": "MKKS"
+        }
+      }
+    ],
+    "predicates": [
+      {
+        "type": "transcribed to",
+        "source": "n1",
+        "target": "n2"
+      },
+      {
+        "type": "translates to",
+        "source": "n2",
+        "target": "n3"
+      }
+    ]
+  }
+}'
+
+
+curl --location 'http://localhost:5000/query' \
+--header 'Content-Type: application/json' \
+--data '{
+  "requests": {
+    "nodes": [
+      {
+        "node_id": "n1",
+        "id": "",
+        "type": "gene",
+        "properties": {
+          "gene_type": "protein_coding"
+        }
+      },
+      {
+        "node_id": "n2",
+        "id": "",
+        "type": "transcript",
+        "properties": {}
+      },
+      {
+	"node_id": "n3",
+        "id": "",
+        "type": "protein",
+        "properties": {
+          "protein_name": "ANKE1"
+        }
+      }
+    ],
+    "predicates": [
+      {
+        "type": "transcribed to",
+        "source": "n1",
+        "target": "n2"
+      }
+   ]
+  }
+}'
+
+curl --location 'http://localhost:5000/query' --header 'Content-Type: application/json' --data '{
+  "requests": {
+    "nodes": [
+      {
+        "node_id": "n1",
+        "id": "",
+        "type": "gene",
+        "properties": {
+          "gene_type": "protein_coding"
+        }
+      }
+    ],
+    "predicates": []
+  }
+}'
+
+=======
 
 curl -X GET http://localhost:5000/edges
 
@@ -347,6 +456,7 @@ curl -X POST http://localhost:8000/query \
       }
     }
   }'
+>>>>>>> 52048cdb8ebd8dd16af2c8167aa54c0169df6dad
 
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \

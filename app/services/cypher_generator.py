@@ -337,6 +337,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         where_clauses = {'where_no_preds': [], 'where_preds': []}
         no_label_ids = {'no_node_labels': set(), 'no_predicate_labels': set()}
         exclude_where = set()
+        return_or = []
 
         print("APPLYING BOOLEAN OPERATION")
 
@@ -396,6 +397,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             no_label_id['no_node_labels'].update([predicate['source'], predicate['target']])
             no_label_id['no_predicate_labels'].add(predicate_id)
             where_clause = f"type({predicate_id}) <> '{label}'"
+
+        print(401, where_clause, no_label_id)
         return where_clause, no_label_id
     
     def construct_or_operation(self, logic, node_map, predicate_map):
@@ -412,12 +415,12 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     properties_or.append(f"{node_id}.{property} = '{single_value}'")
             where_clause = ' OR '.join(properties_or)
         
+        returns = []
         if 'predicates' in logic:
             predicate_ids = logic['predicates']
             print("predicate_id", predicate_ids)
             temp_properties_or = []
             operands = []
-            returns = []
 
             for index, predicate_id in enumerate(predicate_ids):
                 print("INDEX", index)
@@ -569,7 +572,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                             node_dict[node_id] = node_data
 
                 elif isinstance(item, neo4j.graph.Node):
-                    print("NODE: ", item)
+                    # print("NODE: ", item)
                     node_id = f"{list(item.labels)[0]} {item['id']}"
                     if node_id not in node_dict:
                         node_data = {

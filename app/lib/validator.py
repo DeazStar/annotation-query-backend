@@ -80,6 +80,7 @@ def validate_request(request, schema):
     # validate the logic if present
     if 'logic' in request:
         logic = request['logic']
+        operators = ["NOT", "OR"]
 
         if not isinstance(logic, dict):
             raise Exception("logic should be a dict")
@@ -99,8 +100,9 @@ def validate_request(request, schema):
                 raise Exception("operator key is required")
             if not isinstance(child['operator'], str):
                 raise Exception("operator value must be instance of string")
-            if child['operator'] not in ["NOT"]:
-                raise Exception("operator value must be in NOT")
+            child['operator'] = child['operator'].upper()
+            if child['operator'] not in operators:
+                raise Exception("operator value must be either NOT or OR")
 
             if "nodes" in child:
                 if not isinstance(child["nodes"], dict):

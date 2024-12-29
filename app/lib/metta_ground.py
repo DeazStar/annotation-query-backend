@@ -11,11 +11,13 @@ class Metta_ground:
         not_node = OperationAtom("not_node", self.not_nodes, unwrap=False)
         not_id = OperationAtom("not_id", self.not_ids, unwrap=False) 
         not_property = OperationAtom("not_property", self.not_propertys, unwrap=False)
+        or_property = OperationAtom("or_property", self.or_propertys, unwrap=False)
 
         # register the functions into the atom space
         self.metta.register_atom("not_node", not_node)
         self.metta.register_atom("not_id", not_id)
         self.metta.register_atom("not_property", not_property)
+        self.metta.register_atom("or_property", or_property)
     
     def not_nodes(self, *nodes):
         query = f"!(match &space ($a $n1) ($a $n1))"
@@ -53,19 +55,33 @@ class Metta_ground:
 
         if len(properties) == 0:
             query = f"!(match &space ({n_property} ({node} $n1) {value}) ({node} $n1))"
+            results = self.metta.run(query)
         else:
-            query = f"!(match &space (, "
-            for p_v in pro_val:
-                query += f"({p_v[0]} ({node} $n1) {p_v[1]}) "
-            query += f") ({node} $n1))"
-
-        
-        results = self.metta.run(query)
-        nodes = []
-        for result in results[0]:
-            nodes.append(str(result.get_children()[1]))
-
-        query = f"!(not_id {node} " + " ".join(nodes) + ")"
-        results = self.metta.run(query)
-
+            query = self.create_unify(node, pro_val)
+            results = self.metta.run(query)
+                
         return results[0] 
+
+    def create_unify(self, node, pro_val):
+        
+        query = f"!(match &space ({node} $n1)"
+        start = " (unify &space "
+
+        for p_v in pro_val:
+            query += start
+            query += f"({p_v[0]} ({node} $n1) {p_v[1]}) (empty)"
+
+        query += " $n1"
+        for i in range(len(pro_val) + 1):
+            query += ")"
+        return query
+
+    def or_propertys(self, node, *n_property):
+               
+        result = []
+        for properties in n_property:
+            prop, val = properties.get_children()[0], properties.get_children()[1]
+            query = f"!(match &space ({prop} ({node} $n1) {val}) ({node} $n1))"
+            result.extend(self.metta.run(query)[0])
+
+        return result

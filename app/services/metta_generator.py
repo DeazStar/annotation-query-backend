@@ -51,19 +51,20 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def query_Generator(self, data,node_map):
+    def query_Generator(self, data, node_map, limit):
         nodes = data['nodes']
 
         metta_output = '''!(match &space (,'''
         output = ''' (, '''
  
         logic = data.get('logic', None)
-        logic_dict = self.logic_node(logic)
+        logic_dict = self.logic_node(nodes, logic)
         node_without_predicate = None
         predicates = None
         not_node = []
         not_id = {}
         not_property = {}
+        or_property = {}
 
         if "predicates" not in data:
             node_without_predicate = nodes
@@ -87,26 +88,40 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                         metta_output += f' ({node_type} {essemble_id})'
                         output += f' ({node_type} {essemble_id})'
                     else:
-                        if node_type in not_id:
-                            not_id[node_type].append(essemble_id)
-                        else:
-                            not_id[node_type] = [essemble_id]
+                        if logic_dict[node_id]['operator'] == 'NOT':
+                            if node_type in not_id:
+                                not_id[node_type].append(essemble_id)
+                            else:
+                                not_id[node_type] = [essemble_id]
                 else:
                     if len(node["properties"]) == 0:
                         if logic is None or node_id not in logic_dict:
                             metta_output += f' ({node_type} ${node_id})'
                             output += f' ({node_type} {node_identifier})'
                         else:
-                            not_node.append(node_type)
+                            if logic_dict[node_id]['operator'] == 'NOT':
+                                not_node.append(node_type)
+                            elif logic_dict[node_id]['operator'] == 'OR' and 'properties' in logic_dict[node_id]['nodes']:
+                                if node_type in or_property:
+                                    or_property[node_type] += [(k, v) for k,vs in logic_dict[node_id]['nodes']['properties'].items() for v in vs]
+                                else:
+                                    or_property[node_type] = [(k, v) for k,vs in logic_dict[node_id]['nodes']['properties'].items() for v in vs] 
                     else: 
                         if logic is None or node_id not in logic_dict:
                             metta_output += self.construct_node_representation(node, node_identifier)
                             output += f' ({node_type} {node_identifier})'
                         else:
-                            if node_type in not_property:
-                                not_property[node_type].update(node['properties'])
-                            else:
-                                not_property[node_type] = node['properties']
+                            if logic_dict[node_id]['operator'] == 'NOT':
+                                if node_type in not_property:
+                                    not_property[node_type].update(node['properties'])
+                                else:
+                                    not_property[node_type] = node['properties']
+                            elif logic_dict[node_id]['operator'] == 'OR' and 'properties' in logic_dict[node_id]['nodes']:
+                                if node_type in or_property:
+                                    or_property[node_type] += [(k, v) for k,vs in logic_dict[node_id]['nodes']['properties'].items() for v in vs]
+                                else:
+                                    or_property[node_type] = [(k, v) for k,vs in logic_dict[node_id]['nodes']['properties'].items() for v in vs] 
+
             if len(not_node) > 0:
                 output += " (not_node " + " ".join(not_node) + ")"
 
@@ -115,7 +130,12 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
 
             for node_type, node_property in not_property.items():
                 output += f" (not_property {node_type} (" + " ".join(list(node_property.keys())) + ") (" + " ".join(list(node_property.values())) + "))" 
-                    
+            for node_type, node_propertys in or_property.items():
+                output += f" (or_property {node_type} "
+                for propertys in node_propertys:
+                    output += f"({propertys[0]} {propertys[1]})"
+                output += ")"
+
     
         if predicates is None:
             return metta_output
@@ -155,22 +175,21 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
     def run_query(self, query_code, limit=None, apply_limit=True):
         return self.metta.run(query_code)
 
-    def logic_node(self, request_logic):
+    def logic_node(self, nodes, request_logic):
         
-        if request_logic == None:
+        if  request_logic == None:
             return {}
 
-        nodes = {}
-        children = request_logic["children"]
-        for operation in children:
-            if "nodes" in operation:
-                node_id = operation["nodes"]["node_id"]
-                if node_id in nodes:
-                    nodes[node_id].append(operation['nodes'])
-                else:
-                    nodes[node_id] = [operation['nodes']]
+        logic = {}
+        for child in request_logic['children']:
+            if child['operator'] == 'NOT':
+                if 'nodes' in child:
+                    logic[child['nodes']['node_id']] = child
+            elif child['operator'] == 'OR':
+                if 'nodes' in child:
+                    logic[child['nodes']['node_id']] = child
 
-        return nodes
+        return logic
 
     def parse_and_serialize(self, input, schema, all_properties):
         result = self.prepare_query_input(input, schema)

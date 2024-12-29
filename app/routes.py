@@ -114,7 +114,7 @@ def process_query(current_user_id):
 
         # Generate the query code
         query_code = db_instance.query_Generator(requests, node_map, limit)
-        print("FINISHED GENERATING QUERY")
+        print("FINISHED GENERATING QUERY", query_code)
         
         # Run the query and parse the results
         result = db_instance.run_query(query_code)

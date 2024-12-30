@@ -137,7 +137,6 @@ def process_query(current_user_id):
         else:
             existing_query = None
 
-        print(response_data)
         if existing_query is None:
             title = llm.generate_title(query_code)
             summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) != None else 'Graph to big could not summarize'

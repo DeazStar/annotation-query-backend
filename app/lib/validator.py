@@ -124,16 +124,8 @@ def validate_request(request, schema):
                     
             if "predicates" in child:
                 
-                if not isinstance(child["predicates"], dict):
-                    raise Exception("predicates value must be a dict")
-
-                predicates = child["predicates"]
-                if "predicate_id" not in predicates:
-                    raise Exception("predicate value must have a prdicate_id key")
-                if not isinstance(nodes["predicate_id"], str):
-                    raise Exception("predicare_id value must be an instance of a string")
-                if predicates["predicate_id"] not in predicate_ids:
-                    raise Exception("invalid predicate_id: no matching predicate_id fournd in the decalred predicates above")
+                if not isinstance(child["predicates"], list):
+                    raise Exception("predicates value must be a list")
 
 
     return node_map

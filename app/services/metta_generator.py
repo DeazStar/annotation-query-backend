@@ -139,17 +139,27 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
     
         if predicates is None:
             return metta_output
+        
+        query_list = []
 
         for predicate in predicates:
             predicate_type = predicate['type'].replace(" ", "_")
             source_id = predicate['source']
             target_id = predicate['target']
+            
+            if predicate['predicate_id'] in logic_dict:
+                new_query = '!(match &space (,'
+                new_output = ' (, '
 
             # Handle source node
             source_node = node_map[source_id]
             if not source_node['id']:
                 node_identifier = "$" + source_id
-                metta_output += self.construct_node_representation(source_node, node_identifier)
+                if predicate['predicate_id'] not in logic_dict:
+                    metta_output += self.construct_node_representation(source_node, node_identifier)
+                else:
+                    new_query += self.construct_node_representation(source_node, node_identifier)
+                    
                 source = f'({source_node["type"]} {node_identifier})'
             else:
                 source = f'({str(source_node["type"])} {str(source_node["id"])})'
@@ -159,16 +169,26 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             target_node = node_map[target_id]
             if not target_node['id']:
                 target_identifier = "$" + target_id
-                metta_output += self.construct_node_representation(target_node, target_identifier)
+                if predicate['predicate_id'] not in logic_dict:
+                    metta_output += self.construct_node_representation(target_node, node_identifier)
+                else:
+                    new_query += self.construct_node_representation(target_node, node_identifier)
                 target = f'({target_node["type"]} {target_identifier})'
             else:
                 target = f'({str(target_node["type"])} {str(target_node["id"])})'
 
             # Add relationship
-            metta_output += f' ({predicate_type} {source} {target})'
-            output += f' ({predicate_type} {source} {target})'
-
+            if predicate['predicate_id'] not in logic_dict:
+                metta_output += f' ({predicate_type} {source} {target}) '
+                output += f' ({predicate_type} {source} {target})'
+            else:
+                new_query += f' ({predicate_type} {source} {target})'
+                new_output += f' ({predicate_type} {source} {target}) '
+                new_query += f' ){new_output}))'
+                query_list.append(new_query)
         metta_output += f' ){output}))'
+        if len(query_list) > 0:
+            metta_output += " ".join(query_list)
         return metta_output
 
 
@@ -188,6 +208,9 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             elif child['operator'] == 'OR':
                 if 'nodes' in child:
                     logic[child['nodes']['node_id']] = child
+                elif 'predicates' in child:
+                    for predicate in child['predicates']:
+                        logic[predicate] = child
 
         return logic
 
@@ -337,10 +360,13 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         result.append(relationship_list)
         return (result, node_to_dict, edge_to_dict)
 
-    def prepare_query_input(self, input, schema):
+    def prepare_query_input(self, inputs, schema):
         result = []
+        tuples = []
 
-        tuples = self.metta_seralizer(input[0])
+        for input in inputs:
+            tuples += self.metta_seralizer(input)
+        
         for tuple in tuples:
             if len(tuple) == 2:
                 src_type, src_id = tuple

@@ -154,6 +154,7 @@ class Graph_Summarizer:
             if graph:
                 prev_summery=[]
                 self.graph_description(graph)
+                response = None
                 for i, batch in enumerate(self.descriptions):  
                     if prev_summery:
                         if user_query:
@@ -163,15 +164,14 @@ class Graph_Summarizer:
                     else:
                         if user_query:
                             prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=batch,user_query=user_query)
-                            print("prompt", prompt)
                         else:
                             prompt = SUMMARY_PROMPT.format(description=batch)
-                            print("prompt", prompt)
 
                     response = self.llm.generate(prompt)
                     prev_summery = [response]  
                 # cleaned_desc = self.clean_and_format_response(response)
                 return response
+
         except:
             traceback.print_exc()
    

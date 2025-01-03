@@ -290,7 +290,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
     def process_result(self, results, all_properties):
         nodes = {}
         relationships_dict = {}
-        result = []
+        result = {} 
         node_to_dict = {}
         edge_to_dict = {}
         node_type = set()
@@ -356,8 +356,10 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         node_list = [{"data": node} for node in nodes.values()]
         relationship_list = [{"data": relationship} for relationship in relationships_dict.values()]
 
-        result.append(node_list)
-        result.append(relationship_list)
+        result['nodes'] = node_list
+        result['edges'] = relationship_list
+        result['node_count'] = 0
+        result['edge_count'] = 0
         return (result, node_to_dict, edge_to_dict)
 
     def prepare_query_input(self, inputs, schema):

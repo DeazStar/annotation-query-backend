@@ -1,4 +1,5 @@
 from flask import Flask
+from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from app.services.schema_data import SchemaManager
@@ -12,6 +13,8 @@ import logging
 import yaml
 
 app = Flask(__name__)
+CORS(app)
+app.config['SECRET_KEY'] = 'your_secret_key'
 
 def load_config():
     config_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'config.yaml')
@@ -57,4 +60,3 @@ schema_manager = SchemaManager(schema_config_path='./config/schema_config.yaml',
 
 # Import routes at the end to avoid circular imports
 from app import routes
-

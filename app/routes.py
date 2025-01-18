@@ -7,6 +7,8 @@ import threading
 from app import app, schema_manager, db_instance
 from app.lib import validate_request
 from flask_cors import CORS
+from flask_socketio import join_room, leave_room
+from app.socket import socketio
 from app.lib import limit_graph
 from app.lib.auth import token_required
 from app.lib.email import init_mail, send_email
@@ -67,21 +69,20 @@ def get_relations_for_node_endpoint(current_user_id, node_label):
     relations = json.dumps(schema_manager.get_relations_for_node(node_label), indent=4)
     return Response(relations, mimetype='application/json')
 
-@app.route('/query', methods=['POST'])
-@token_required
-def process_query(current_user_id):
+def process_query(current_user_id, request, limit, properties, sid):
     print("PROCESSING REQUEST")
-    data = request.get_json()
+    data = request
+    join_room(sid)
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
     
-    limit = request.args.get('limit')
-    properties = request.args.get('properties')
+    # limit = request.args.get('limit')
+    # properties = request.args.get('properties')
     
-    if properties:
-        properties = bool(strtobool(properties))
-    else:
-        properties = False
+    # if properties:
+    #    properties = bool(strtobool(properties))
+    # else:
+    #    properties = False
 
     if limit:
         try:
@@ -119,7 +120,8 @@ def process_query(current_user_id):
         # Run the query and parse the results
         result = db_instance.run_query(query_code)
         response_data = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
-
+        
+        socketio.emit("json", response_data, to=sid)
         # Extract node types
         nodes = requests['nodes']
         node_types = set()
@@ -139,7 +141,9 @@ def process_query(current_user_id):
 
         if existing_query is None:
             title = llm.generate_title(query_code)
+            socketio.emit("title", title, to=sid)
             summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) != None else 'Graph to big could not summarize'
+            socketio.emit("summary", summary, to=sid)
             answer = llm.generate_summary(response_data, question, True, summary) if question else None
             node_count = response_data['node_count']
             edge_count = response_data['edge_count'] if "edge_count" in response_data else 0
@@ -157,7 +161,9 @@ def process_query(current_user_id):
 
         if existing_query:
             title = existing_query.title
+            sokcetio.emit("title", title, to=sid)
             summary = existing_query.summary
+            socketio.emit("summary", summary, to=sid)
             annotation_id = existing_query.id
             storage_service.update(annotation_id, {"updated_at": datetime.datetime.now()})
 
@@ -181,7 +187,8 @@ def process_query(current_user_id):
 
         formatted_response = json.dumps(response_data, indent=4)
         logging.info(f"\n\n============== Query ==============\n\n{query_code}")
-        return Response(formatted_response, mimetype='application/json')
+        leave_room(sid)
+        # return Response(formatted_response, mimetype='application/json')
     except Exception as e:
         logging.error(f"Error processing query: {e}")
         return jsonify({"error": str(e)}), 500

@@ -6,7 +6,6 @@ import os
 import threading
 from app import app, schema_manager, db_instance
 from app.lib import validate_request
-from flask_cors import CORS
 from flask_socketio import join_room, leave_room
 from app.socket import socketio
 from app.lib import limit_graph
@@ -40,7 +39,6 @@ storage_service = app.config['storage_service']
 # Initialize Flask-Mail
 init_mail(app)
 
-CORS(app)
 
 # Setup basic logging
 logging.basicConfig(level=logging.DEBUG)
@@ -74,21 +72,13 @@ def process_query(current_user_id, request, limit, properties, sid):
     data = request
     join_room(sid)
     if not data or 'requests' not in data:
-        return jsonify({"error": "Missing requests data"}), 400
     
-    # limit = request.args.get('limit')
-    # properties = request.args.get('properties')
-    
-    # if properties:
-    #    properties = bool(strtobool(properties))
-    # else:
-    #    properties = False
-
+           socketio.emit("error", "Missing requests data")
     if limit:
         try:
             limit = int(limit)
         except ValueError:
-            return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
+           socketio.emit("error", "Invalid limit value. It should be an integer.")
     else:
         limit = None
     try:
@@ -106,7 +96,7 @@ def process_query(current_user_id, request, limit, properties, sid):
         # Validate the request data before processing
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
-            return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
+            socketio.emit("error", "Invalid node_map returned by validate_request", to=sid)
 
         #convert id to appropriate format
         requests = db_instance.parse_id(requests)
@@ -142,7 +132,9 @@ def process_query(current_user_id, request, limit, properties, sid):
         if existing_query is None:
             title = llm.generate_title(query_code)
             socketio.emit("title", title, to=sid)
-            summary = llm.generate_summary(response_data) if llm.generate_summary(response_data) != None else 'Graph to big could not summarize'
+            summary = llm.generate_summary(response_data, request=request) 
+            if summary  == None:
+                summary = 'Graph to big could not summarize'
             socketio.emit("summary", summary, to=sid)
             answer = llm.generate_summary(response_data, question, True, summary) if question else None
             node_count = response_data['node_count']
@@ -187,11 +179,12 @@ def process_query(current_user_id, request, limit, properties, sid):
 
         formatted_response = json.dumps(response_data, indent=4)
         logging.info(f"\n\n============== Query ==============\n\n{query_code}")
-        leave_room(sid)
         # return Response(formatted_response, mimetype='application/json')
     except Exception as e:
         logging.error(f"Error processing query: {e}")
-        return jsonify({"error": str(e)}), 500
+        socketio.emit("error", str(e), to=sid)
+
+    leave_room(sid)
 
 @app.route('/email-query/<id>', methods=['POST'])
 @token_required

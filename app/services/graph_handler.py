@@ -138,7 +138,7 @@ class Graph_Summarizer:
         
         return self.descriptions
 
-    def summary(self,graph,user_query=None,graph_id=None, summary=None):
+    def summary(self,graph,user_query=None,graph_id=None, summary=None, request=None):
         prev_summery=[]
         try:
 
@@ -147,7 +147,7 @@ class Graph_Summarizer:
                 if user_query:
                     prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=graph_summary,user_query=user_query)
                 else:
-                    prompt = SUMMARY_PROMPT.format(description=graph_summary)
+                    prompt = SUMMARY_PROMPT.format(description=graph_summary, request=request)
                 response = self.llm.generate(prompt)
                 return response
 
@@ -160,12 +160,12 @@ class Graph_Summarizer:
                         if user_query:
                             prompt = SUMMARY_PROMPT_CHUNKING_USER_QUERY.format(description=batch,user_query=user_query,prev_summery=prev_summery)
                         else:
-                            prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery)
+                            prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery, request=request)
                     else:
                         if user_query:
                             prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=batch,user_query=user_query)
                         else:
-                            prompt = SUMMARY_PROMPT.format(description=batch)
+                            prompt = SUMMARY_PROMPT.format(description=batch, request=request)
 
                     response = self.llm.generate(prompt)
                     prev_summery = [response]  

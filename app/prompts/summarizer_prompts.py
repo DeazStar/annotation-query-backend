@@ -14,6 +14,7 @@ SUMMARY_PROMPT_CHUNKING ="""
 You are an expert biology assistant on summarizing graph data.\n\n
     Given the following graph data:\n{description}\n\n
     Given the following previous summary:\n{prev_summery}\n\n"
+    Given the following JSON query: \n{request}\n\n"
     Your task is to analyze the graph ,including the previous summary and summarize the most important trends, patterns, and relationships.\n
     Instructions:\n
         - Count and list important metrics, such as the number of nodes and edges.   
@@ -50,7 +51,10 @@ You are an advanced biology assistant specializing in analyzing and summarizing 
 Graph Data:
     {description}
 
-    Your job is to comprehensively analyze the graph and generate a detailed explanation about the trends, patterns and relationships in the data.
+JSON query:
+    {request}
+
+    Your job is to comprehensively analyze the graph and the JSON query which shows the users intention  and generate a detailed explanation about the trends, patterns and relationships in the data.
 
     Instructions:
     

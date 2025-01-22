@@ -45,3 +45,4 @@ class StorageService():
     def delete(self, id):
         data = Storage.delete({"_id": id})
         return data
+

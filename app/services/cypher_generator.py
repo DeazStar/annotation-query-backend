@@ -69,7 +69,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         
         with self.driver.session() as session:
             results.append(list(session.run(find_query)))
+
         if source != 'hypothesis':
+
             if total_count_query:
                 try:
                     with self.driver.session() as session:

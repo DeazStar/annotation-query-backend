@@ -138,8 +138,9 @@ class Graph_Summarizer:
         
         return self.descriptions
 
-    def summary(self,graph,user_query=None,graph_id=None, summary=None, request=None):
+    def summary(self,graph,user_query=None,graph_id=None, summary=None):
         prev_summery=[]
+        response = None
         try:
 
             if graph_id:
@@ -147,31 +148,28 @@ class Graph_Summarizer:
                 if user_query:
                     prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=graph_summary,user_query=user_query)
                 else:
-                    prompt = SUMMARY_PROMPT.format(description=graph_summary, request=request)
+                    prompt = SUMMARY_PROMPT.format(description=graph_summary)
                 response = self.llm.generate(prompt)
                 return response
 
             if graph:
                 prev_summery=[]
                 self.graph_description(graph)
-                response = None
                 for i, batch in enumerate(self.descriptions):  
                     if prev_summery:
                         if user_query:
                             prompt = SUMMARY_PROMPT_CHUNKING_USER_QUERY.format(description=batch,user_query=user_query,prev_summery=prev_summery)
                         else:
-                            prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery, request=request)
+                            prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery)
                     else:
                         if user_query:
                             prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=batch,user_query=user_query)
                         else:
-                            prompt = SUMMARY_PROMPT.format(description=batch, request=request)
-
+                            prompt = SUMMARY_PROMPT.format(description=batch)
                     response = self.llm.generate(prompt)
                     prev_summery = [response]  
                 # cleaned_desc = self.clean_and_format_response(response)
                 return response
-
         except:
             traceback.print_exc()
    

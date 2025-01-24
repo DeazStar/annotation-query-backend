@@ -7,11 +7,11 @@ import os
 
 mail = None
 
-def init_mail(app):
+def init_mail(app) -> None:
     global mail
     mail = Mail(app)
 
-def convert_to_csv(response):
+def convert_to_csv(response: dict) -> str:
     file_name = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S') + '.xls'
     file_path = Path(f'./{file_name}').resolve()
     
@@ -36,7 +36,7 @@ def convert_to_csv(response):
         logging.error(e)
     return file_path
 
-def send_email(subject, recipients, body, response):
+def send_email(subject: str, recipients: list[str], body: str, response: dict) -> None:
     attachment_path = None
     try:
         if mail is None:

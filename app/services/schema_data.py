@@ -1,3 +1,4 @@
+
 import json
 from biocypher import BioCypher
 import logging
@@ -170,3 +171,4 @@ class SchemaManager:
                 return graph_info
         except Exception as e:
             return {"error": str(e)}    
+

@@ -1,3 +1,4 @@
+
 from pymongoose import methods
 from pymongoose.mongo_types import Types, Schema, MongoException, MongoError
 from bson import json_util
@@ -69,3 +70,4 @@ class Storage(Schema):
 
     def __str__(self):
         return f"user_id: {self.user_id}, query: {self.query}, title: {self.title}, summary: {self.summary}, question: {self.question}, answer: {self.answer}"
+

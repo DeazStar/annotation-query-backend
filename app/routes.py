@@ -77,14 +77,16 @@ def process_query(current_user_id):
     limit = request.args.get('limit')
     properties = request.args.get('properties')
     source = request.args.get('source') # can be either hypothesis or ai_assistant
+
     node_only = False
     if source == 'hypothesis':
         node_only = True
+
     
     if properties:
         properties = bool(strtobool(properties))
     else:
-        properties = False
+        properties = True
 
     if limit:
         try:

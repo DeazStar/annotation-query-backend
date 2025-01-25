@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class CypherQueryGenerator(QueryGeneratorInterface):
-    def __init__(self, dataset_path: str):
+    def __init__(self, dataset_path: str) -> None:
         self.driver = GraphDatabase.driver(
             os.getenv('NEO4J_URI'),
             auth=(os.getenv('NEO4J_USERNAME'), os.getenv('NEO4J_PASSWORD'))
@@ -23,7 +23,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         # self.dataset_path = dataset_path
         # self.load_dataset(self.dataset_path)
 
-    def close(self):
+    def close(self) -> None:
         self.driver.close()
 
     def load_dataset(self, path: str) -> None:
@@ -39,7 +39,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         edges_paths = [p for p in paths if p.endswith("edges.cypher")]
 
         # Helper function to process files
-        def process_files(file_paths, file_type):
+        def process_files(file_paths: list[str], file_type: str) -> None:
             for file_path in file_paths:
                 logger.info(f"Start loading {file_type} dataset from '{file_path}'...")
                 try:
@@ -56,7 +56,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         logger.info(f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code, source=None):
+    def run_query(self, query_code: str, source: str | None=None) -> list:
         results = []
         if isinstance(query_code, list):
             find_query = query_code[0]
@@ -88,7 +88,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         return results
 
-    def query_Generator(self, requests, node_map, limit=None, node_only=False):
+    def query_Generator(self, requests: dict, node_map: dict[str, [dict[str,str | list]]] , limit=None, node_only=False) -> str:
         nodes = requests['nodes']
 
         if "predicates" in requests:
@@ -198,7 +198,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 cypher_queries.extend(count)
         return cypher_queries
     
-    def construct_clause(self, match_clause, return_clause, where_no_preds, limit):
+    def construct_clause(self, match_clause: list[str], return_clause: list[str], where_no_preds: list[str], limit: int) -> str:
         match_clause = f"MATCH {', '.join(match_clause)}"
         return_clause = f"RETURN {', '.join(return_clause)}"
         if len(where_no_preds) > 0:
@@ -206,7 +206,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             return f"{match_clause} {where_clause} {return_clause} {self.limit_query(limit)}"
         return f"{match_clause} {return_clause} {self.limit_query(limit)}"
 
-    def construct_optional_clause(self, match_clauses, return_clause, where_no_preds, limit):
+    def construct_optional_clause(self, match_clauses: list[str], return_clause list[str], where_no_preds list[str], limit: int) -> str:
         match_clause  = ""
         for match in match_clauses:
             match_clause += f"OPTIONAL MATCH {match} "
@@ -218,7 +218,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         return f"{match_clause} {return_clause} {self.limit_query(limit)}"
 
 
-    def construct_union_clause(self, query_clauses, limit):
+    def construct_union_clause(self, query_clauses: list[str], limit: int) -> str:
         match_no_clause = ''
         where_no_clause = ''
         return_count_no_preds_clause = ''
@@ -253,7 +253,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         query = self.construct_call_clause(clauses, limit)
         return query
 
-    def construct_count_clause(self, query_clauses):
+    def construct_count_clause(self, query_clauses: dict[str, list]) -> list[str]:
         match_no_clause = ''
         where_no_clause = ''
         match_clause = ''
@@ -397,14 +397,14 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         return [total_count, label_count_query]
 
 
-    def limit_query(self, limit):
+    def limit_query(self, limit: int) -> str:
         if limit:
             curr_limit = min(1000, int(limit))
         else:
             curr_limit = 1000
         return f"LIMIT {curr_limit}"
 
-    def construct_call_clause(self, clauses, limit=None):
+    def construct_call_clause(self, clauses: dict, limit=None: int | None) -> str:
         if not ("match_no_clause" in clauses or "match_clause" in clauses):
             raise Exception("Either 'match_clause' or 'match_no_clause' must be present")
 
@@ -437,13 +437,13 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
 
 
-    def match_node(self, node, var_name):
+    def match_node(self, node: dict[str, str | list], var_name: str) -> str:
         if node['id']:
             return f"({var_name}:{node['type']} {{id: '{node['id']}'}})"
         else:
             return f"({var_name}:{node['type']})"
 
-    def where_construct(self, node, var_name):
+    def where_construct(self, node: dict[str, str | list], var_name: str) -> list[str]:
         properties = []
         if node['id']: 
             return properties
@@ -451,22 +451,22 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             properties.append(f"{var_name}.{key} =~ '(?i){property}'")
         return properties
 
-    def parse_neo4j_results(self, results, all_properties):
+    def parse_neo4j_results(self, results: list, all_properties: bool) -> dict[str, list]:
         (nodes, edges, _, _, meta_data) = self.process_result(results, all_properties)
         return {"nodes": nodes, "edges": edges, "node_count": meta_data['node_count'], 
                 "edge_count": meta_data['edge_count'], "node_count_by_label": meta_data['node_count_by_label'], 
                 "edge_count_by_label": meta_data['edge_count_by_label']
                 }
 
-    def parse_and_serialize(self, input, schema, all_properties):
+    def parse_and_serialize(self, input: list[dict], schema: dict, all_properties: bool) -> list:
         parsed_result = self.parse_neo4j_results(input, all_properties)
         return parsed_result
 
-    def convert_to_dict(self, results, schema):
+    def convert_to_dict(self, results: list, schema: dict) -> tuple(dict):
         (_, _, node_dict, edge_dict, _) = self.process_result(results, True)
         return (node_dict, edge_dict)
 
-    def process_result(self, results, all_properties):
+    def process_result(self, results: list, all_properties: bool):
         match_result = results[0]
         node_count_by_label = []
         edge_count_by_label = []
@@ -567,7 +567,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
     
         return (nodes, edges, node_to_dict, edge_to_dict, meta_data)
 
-    def parse_id(self, request):
+    def parse_id(self, request: dict) -> dict:
         nodes = request["nodes"]
         named_types = {"gene": "gene_name", "transcript": "transcript_name"}
         prefixes = ["ensg", "enst"]

@@ -206,7 +206,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             return f"{match_clause} {where_clause} {return_clause} {self.limit_query(limit)}"
         return f"{match_clause} {return_clause} {self.limit_query(limit)}"
 
-    def construct_optional_clause(self, match_clauses: list[str], return_clause list[str], where_no_preds list[str], limit: int) -> str:
+    def construct_optional_clause(self, match_clauses: list[str], return_clause: list[str], where_no_preds: list[str], limit: int) -> str:
         match_clause  = ""
         for match in match_clauses:
             match_clause += f"OPTIONAL MATCH {match} "
@@ -404,7 +404,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             curr_limit = 1000
         return f"LIMIT {curr_limit}"
 
-    def construct_call_clause(self, clauses: dict, limit=None: int | None) -> str:
+    def construct_call_clause(self, clauses: dict, limit: int | None=None) -> str:
         if not ("match_no_clause" in clauses or "match_clause" in clauses):
             raise Exception("Either 'match_clause' or 'match_no_clause' must be present")
 
@@ -462,7 +462,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         parsed_result = self.parse_neo4j_results(input, all_properties)
         return parsed_result
 
-    def convert_to_dict(self, results: list, schema: dict) -> tuple(dict):
+    def convert_to_dict(self, results: list, schema: dict):
         (_, _, node_dict, edge_dict, _) = self.process_result(results, True)
         return (node_dict, edge_dict)
 

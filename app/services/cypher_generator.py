@@ -56,7 +56,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         logger.info(f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code: str, source: str | None=None) -> list:
+
+    def run_query(self, query_code, run_count=True):
+
         results = []
         if isinstance(query_code, list):
             find_query = query_code[0]
@@ -70,8 +72,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         with self.driver.session() as session:
             results.append(list(session.run(find_query)))
 
-        if source != 'hypothesis':
-
+        if run_count:
             if total_count_query:
                 try:
                     with self.driver.session() as session:
@@ -88,7 +89,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         return results
 
-    def query_Generator(self, requests: dict, node_map: dict[str, [dict[str,str | list]]] , limit=None, node_only=False) -> str:
+    def query_Generator(self, requests, node_map, limit=None, node_only=False):
         nodes = requests['nodes']
 
         if "predicates" in requests:
@@ -205,6 +206,18 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             where_clause = f"WHERE {' AND '.join(where_no_preds)}"
             return f"{match_clause} {where_clause} {return_clause} {self.limit_query(limit)}"
         return f"{match_clause} {return_clause} {self.limit_query(limit)}"
+    
+    def construct_optional_clause(self, match_clause, return_clause, where_no_preds, limit):
+        optional_clause = ""
+
+        for match in match_clause:
+            optional_clause += f"OPTIONAL MATCH {match} "
+
+        return_clause = f"RETURN {', '.join(return_clause)}"
+        if len(where_no_preds) > 0:
+            where_clause = f"WHERE {' AND '.join(where_no_preds)}"
+            return f"{optional_clause} {where_clause} {return_clause} {self.limit_query(limit)}"
+        return f"{optional_clause} {return_clause} {self.limit_query(limit)}"
 
     def construct_optional_clause(self, match_clauses: list[str], return_clause: list[str], where_no_preds: list[str], limit: int) -> str:
         match_clause  = ""

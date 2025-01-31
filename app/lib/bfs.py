@@ -13,34 +13,25 @@ class Bfs:
 
         output = []
         for i, v in schema.items():
-    
             if v['represented_as'] == 'edge':
-                if 'source' in v and 'target' in v:
+                if 'source' in v and 'target' in v and 'input_label' in v:
                     if not isinstance(v['target'], list): 
-                        output.append((i, (v['source'], v['target'])))
+                        output.append((v['input_label'], (v['source'], v['target'])))
                     else: # to destructure cases where target is a list
                         for t in v['target']:
-                            output.append((i, (v['source'], t)))
-
+                            output.append((v['input_label'], (v['source'], t)))
+   
+ 
         return output
 
     def parse_edge(self, inputs): 
     
         output = {}
         for i in inputs:
+
             edge = i[0]
-            source = i[1][0]
-            target = i[1][1]
-    
-            edge = edge.removeprefix(f"{source}_")
-            edge = edge.removesuffix(f"_{target}")
-    
-            if isinstance(target, list): # to guard against classes that have a list as a target
-                i[1][1] = tuple(target)
-    
-            key = tuple(i[1])
+            key = i[1]
             output[key] = edge
-    
     
         return output
 
@@ -116,3 +107,4 @@ class Bfs:
             requests.append(request)
 
         return requests 
+

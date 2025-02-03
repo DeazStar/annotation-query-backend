@@ -41,6 +41,8 @@ def find_paths(data, source, target, id=None, properties=None):
 
     
 def process_paths(paths, graph):
+   
+        
     results = []
 
     for path in paths:
@@ -102,7 +104,7 @@ def process_paths(paths, graph):
             "predicates": predicates
         })
     
-
+    print(json.dumps(results, indent=2))
     return json.dumps(results, indent=2)     
 def clean_number(experssion):
     return re.sub(r'\d+$','',experssion)

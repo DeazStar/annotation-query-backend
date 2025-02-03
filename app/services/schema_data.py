@@ -5,8 +5,9 @@ import yaml
 
 # Setup basic logging
 logging.basicConfig(level=logging.DEBUG)
-
+final_json=None
 class SchemaManager:
+    
     def __init__(self, schema_config_path: str, biocypher_config_path: str):
         self.bcy = BioCypher(schema_config_path=schema_config_path, biocypher_config_path=biocypher_config_path)
         self.schema = self.process_schema(self.bcy._get_ontology_mapping()._extend_schema())
@@ -16,7 +17,9 @@ class SchemaManager:
         self.filter_schema = self.filter_schema(self.schema)
     
     def process_schema(self, schema):
+        global final_json
         process_schema = {}
+        result = {}  # Initialize a single result dictionary
 
         for value in schema.values():
             input_label = value.get("input_label")
@@ -35,7 +38,24 @@ class SchemaManager:
                         key_label = f'{s}_{i_label}_{t}' if s and t else i_label
                         process_schema[key_label] = {**value, "key": key_label}
 
+            # Update the result dictionary
+            self.generate_entity_mapping(input_label, source, target, result)
+
+        # Print final JSON string with all elements of result
+        final_json = json.dumps({"result": result}, indent=4)
+        
+         
         return process_schema
+
+
+    def generate_entity_mapping(self, input_label, source, target, result):
+        if source is not None and target is not None:
+            if isinstance(target, list):
+                for key, t in enumerate(target):
+                    result[f'{input_label}{key}'] = {"source": source, "target": t}
+                  
+            if not isinstance(target, list):
+                result[input_label] = {"source": source, "target": target}
     
     def filter_schema(self, schema):
         filtered_schema = {}
@@ -162,3 +182,5 @@ class SchemaManager:
                 return graph_info
         except Exception as e:
             return {"error": str(e)}    
+def get_final_json():
+    return final_json

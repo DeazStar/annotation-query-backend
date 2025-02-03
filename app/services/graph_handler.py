@@ -4,7 +4,7 @@ import re
 import traceback
 import json
 import tiktoken
-from app.prompts.summarizer_prompts import SUMMARY_PROMPT, SUMMARY_PROMPT_BASED_ON_USER_QUERY,SUMMARY_PROMPT_CHUNKING,SUMMARY_PROMPT_CHUNKING_USER_QUERY
+from app.prompts.summarizer_prompts import SUMMARY_PROMPT, SUMMARY_PROMPT_BASED_ON_USER_QUERY,SUMMARY_PROMPT_CHUNKING,SUMMARY_PROMPT_CHUNKING_USER_QUERY,SUMMARY_PROMPT_USER_REQUEST
 class Graph_Summarizer: 
     '''
     Handles graph-related operations like processing nodes, edges, generating responses ...
@@ -139,9 +139,11 @@ class Graph_Summarizer:
         
         return self.descriptions
 
-    def summary(self,graph,user_query=None,graph_id=None, summary=None):
+    def summary(self,graph,user_query=None,graph_id=None, summary=None,data_value=None):
         prev_summery=[]
         response = None
+        print("data",data_value)
+     
         try:
 
             if graph_id:
@@ -164,8 +166,16 @@ class Graph_Summarizer:
                             prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery)
                     else:
                         if user_query:
+                            print ("print step 1 ")
                             prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=batch,user_query=user_query)
-                            print("prompt", prompt)
+                             
+
+                        #TODO TO MAKE USE USER REQUEST AS A PROMPT 
+                         
+                        elif data_value:
+                            print("data",data_value)
+                            print("batch",batch)
+                            prompt=SUMMARY_PROMPT_USER_REQUEST.format(description=batch,data_value=data_value)
                         else:
                             prompt = SUMMARY_PROMPT.format(description=batch)
                             print("prompt", prompt)

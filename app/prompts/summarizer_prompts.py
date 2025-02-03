@@ -41,12 +41,15 @@ SUMMARY_PROMPT_CHUNKING_USER_QUERY ="""
                                 Addressed with clear and concise descriptions. Make sure not to use bullet points or numbered lists, but instead focus on delivering the content in paragraph form for the user question
                              """
 
-
+# Nodes: {nodes_summary}
+# Predicates: {predicates_summary}
+# Logic: {logic_summary}
 SUMMARY_PROMPT = """
 You are an expert biology assistant on summarizing graph data.
 
 Given the following graph data:
 {description}
+
 
 Your task is to analyze and summarize the most important trends, patterns, and relationships in a list of paragraphs. 
 Each paragraph should address one of the following points:
@@ -58,3 +61,20 @@ Each paragraph should address one of the following points:
 - Explain any notable relationships, including nodes that have a higher number of associated related nodes or complex processes.
 Addressed points in a separate paragraph, with clear and concise descriptions. Make sure not to use bullet points or numbered lists, but instead focus on delivering the content in paragraph form.
 """
+
+SUMMARY_PROMPT_USER_REQUEST="""You are an expert biology assistant on summarizing graph data.
+
+Given the following graph data:
+{description}
+This is the request from user :
+{data_value}
+
+Your task is to analyze and summarize the most important trends, patterns, and relationships in a list of paragraphs. 
+Each paragraph should address one of the following points:
+- Identify key trends and relationships in the graph data.
+- Count and list important metrics, such as the number of nodes and edges.
+- Identify any central nodes and explain their role in the network.
+- Mention any notable structures in the graph, such as chains, hubs, or clusters.
+- Discuss any specific characteristics of the data, such as alternative splicing or regulatory mechanisms that may be involved.
+- Explain any notable relationships, including nodes that have a higher number of associated related nodes or complex processes.
+Addressed points in a separate paragraph, with clear and concise descriptions. Make sure not to use bullet points or numbered lists, but instead focus on delivering the content in paragraph form."""

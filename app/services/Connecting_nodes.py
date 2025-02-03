@@ -16,7 +16,21 @@ def find_paths(data, source, target, id=None, properties=None):
         tgt_type = mapping["target"]
         graph[src_type].append((tgt_type, relation))
          
-    
+    def shortest_path(graph, start,end):
+        queue= deque([(start, [start])])
+        visted=set()
+        while queue:
+            current_node,path=queue.popleft()
+            if current_node == end:
+                return path 
+            if current_node not in  visted:
+                visted.add(current_node)
+                for neighbor,relation in graph.get(current_node,[]):
+                    if neighbor not in visted:
+                        queue.append((neighbor,path+[neighbor]))
+        return []
+
+
     # BFS to find all paths from source to target
     def bfs_paths(graph, source, target):
         queue = deque([(source, [source])])
@@ -39,13 +53,15 @@ def find_paths(data, source, target, id=None, properties=None):
     print("path",paths)
     process_paths(paths, graph)
 
-    
+def find_shortest_path(paths):
+    return min(paths, key=len)    
 def process_paths(paths, graph):
    
-        
+    shortest_path = find_shortest_path(paths)
+    ordered_paths = [shortest_path] + [path for path in paths if path != shortest_path]   
     results = []
 
-    for path in paths:
+    for path in ordered_paths:
         node_map = {}
         nodes = []
         predicates = []

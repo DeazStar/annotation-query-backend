@@ -20,6 +20,7 @@ from app.lib import convert_to_csv
 from app.lib import generate_file_path
 from app.lib import adjust_file_path
 from flask_socketio import send,emit,join_room,leave_room
+from app.services.subgraph import check_subgraphs
 import json
  
 # Load environmental variables
@@ -46,7 +47,7 @@ storage_service = app.config['storage_service']
 init_mail(app)
 
 CORS(app)
-data=None
+ 
 # Setup basic logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -95,7 +96,6 @@ def process_query(current_user_id):
     def handle_message(auth):
         emit('my responce',{'data':"Connected"})
     logging.info(f"\n\nWebSocket connected for query\n\n")
-    global data
     data = request.get_json()
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
@@ -240,9 +240,10 @@ def process_query(current_user_id):
 
         # if limit:
         #     response_data = limit_graph(response_data, limit)
-        requesut=request.get_json()
+        request=request.get_json()
+        check_subgraphs(request)
         formatted_response = json.dumps(response_data, indent=4)
-        final_graph=group_graph(formatted_response,requesut)
+        final_graph=group_graph(formatted_response,request)
         final_graph=json.dumps(final_graph)
         response = {
         "final_graph": json.loads(final_graph),  # Optionally, parse back to ensure correct structure

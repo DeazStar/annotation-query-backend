@@ -2,16 +2,16 @@ from collections import defaultdict
 import uuid
 import json
 def group_graph(result_graph, request):
-    
+ 
     MINIMUM_EDGES_TO_COLLAPSE = 2
-     
-    result_graph=json.loads(result_graph)
+   
      
     Edge=result_graph['edges']
+  
      
     # Get all unique edge types
     edge_types = list(set(edge["type"] for edge in request['requests']["predicates"]))
-
+ 
  
     # Group edges by source or target for each edge type
     edge_groupings = []
@@ -30,7 +30,7 @@ def group_graph(result_graph, request):
         # Choose grouping with fewer groups
         grouped_by = "source" if len(source_groups) <= len(target_groups) else "target"
         groups = source_groups if grouped_by == "source" else target_groups
-         
+      
         # Save grouping info
         edge_groupings.append({
             "count": len(edges_of_type),
@@ -44,6 +44,7 @@ def group_graph(result_graph, request):
      
     # Process each edge grouping to modify the graph
     new_graph = result_graph.copy()
+ 
     for grouping in edge_groupings:
         sorted_groups = sorted(grouping["groups"].items(), key=lambda x: len(x[1]), reverse=True)
         for key, edges in sorted_groups:
@@ -55,14 +56,14 @@ def group_graph(result_graph, request):
                 edge["data"]["source"] if grouping["groupedBy"] == "target" else edge["data"]["target"]
                 for edge in edges
             ]
-
+             
             # Filter child nodes
             child_nodes = [node for node in new_graph["nodes"] if node["data"]["id"] in child_node_ids]
             unique_parents = list({node["data"].get("parent") for node in child_nodes if "parent" in node["data"]})
 
             if len(unique_parents) > 1:
                 continue  # Skip if nodes have different parents
-
+         
             # Check if the parent has the same child nodes
             if unique_parents:
                 parent_id = unique_parents[0]
@@ -112,6 +113,7 @@ def group_graph(result_graph, request):
                 node["data"].update(counts)  # Update the parent node with the counts
                 break
     update_graph=transform_and_update_graph(new_graph)
+     
     return update_graph
 
 

@@ -125,7 +125,9 @@ class Graph_Summarizer:
 
     
     def graph_description(self,graph):
-        nodes = {node['data']['id']: node['data'] for node in graph['nodes']}
+         
+        nodes = {node['data']['id']: node['data'] for node in graph['nodes'] if 'id' in node['data']}
+
     
         # Check if the 'edges' key exists in the graph
         if len(graph['edges']) > 0:

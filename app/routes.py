@@ -7,7 +7,7 @@ import json
 import yaml
 import os
 import threading
-from app.services.group_graph_edge import group_graph
+ 
 from app import app, databases, schema_manager, db_instance,socketio
 from app.lib import validate_request
 from flask_cors import CORS
@@ -142,7 +142,8 @@ def process_query(current_user_id):
         
         # Run the query and parse the results
         result = db_instance.run_query(query_code, source)
-        response_data = db_instance.parse_and_serialize(result, schema_manager.schema, properties)
+        print("data",data)
+        response_data = db_instance.parse_and_serialize(result, schema_manager.schema, properties,data)
 
         # Extract node types
         nodes = requests['nodes']
@@ -241,18 +242,14 @@ def process_query(current_user_id):
 
         # if limit:
         #     response_data = limit_graph(response_data, limit)
-        requesut=request.get_json()
+        print("******************************* Response Generated **********************************************",type(response_data))
         formatted_response = json.dumps(response_data, indent=4)
-        final_graph=group_graph(formatted_response,requesut)
-        final_graph=json.dumps(final_graph)
+        print("******************************* Response Sent *********************************************",type(formatted_response))
+         
         response = {
-        "final_graph": json.loads(final_graph),  # Optionally, parse back to ensure correct structure
+        "final_graph": json.loads(formatted_response),  # Optionally, parse back to ensure correct structure
         
-        "title":title,
-        
-        "annotation_id" :str(annotation_id),
-        "created_at":updated_data.created_at.isoformat(),
-        "updated_at":updated_data.updated_at.isoformat()
+         
     }   
      
         logging.info(f"\n\n============== Query ==============\n\n{query_code}")

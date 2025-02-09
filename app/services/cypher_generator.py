@@ -8,6 +8,7 @@ from neo4j import GraphDatabase
 import glob
 import os
 from neo4j.graph import Node, Relationship
+from app.services.group_graph_edge import group_graph
 
 load_dotenv()
 
@@ -740,15 +741,21 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     properties.append(f"{node['node_id']}.{key} =~ '(?i){property}'")
         return properties
 
-    def parse_neo4j_results(self, results, all_properties):
+    def parse_neo4j_results(self, results, all_properties,request):
         (nodes, edges, _, _, meta_data) = self.process_result(results, all_properties)
-        return {"nodes": nodes, "edges": edges, "node_count": meta_data['node_count'], 
+       
+        graph={"nodes": nodes, "edges": edges, "node_count": meta_data['node_count'], 
                 "edge_count": meta_data['edge_count'], "node_count_by_label": meta_data['node_count_by_label'], 
                 "edge_count_by_label": meta_data['edge_count_by_label']
                 }
+         
+        final_graph=group_graph(graph, request)
+        
+        return final_graph
 
-    def parse_and_serialize(self, input, schema, all_properties):
-        parsed_result = self.parse_neo4j_results(input, all_properties)
+    def parse_and_serialize(self, input, schema, all_properties ,request):
+        
+        parsed_result = self.parse_neo4j_results(input, all_properties,request)
         return parsed_result
 
     def convert_to_dict(self, results, schema):
@@ -829,16 +836,20 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 elif isinstance(item, list):
                     for sub_item in item:
                         node_id, node_data = self.build_node_data(sub_item, all_properties, named_types)
+ 
                         nodes.append(node_data)
+                     
                         node_dict[node_id] = node_data
                         if node_data["data"]["type"] not in node_type:
                             node_type.add(node_data["data"]["type"])
                             node_to_dict[node_data['data']['type']] = [node_data]
+                          
                         else:
                             node_to_dict[node_data['data']['type']].append(node_data)
 
                 elif isinstance(item, neo4j.graph.Node):
                     node_id, node_data = self.build_node_data(item, all_properties, named_types)
+                     
                     nodes.append(node_data)
                     node_dict[node_id] = node_data
                     if node_data["data"]["type"] not in node_type:
@@ -846,7 +857,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                         node_to_dict[node_data['data']['type']] = [node_data]
                     else:
                         node_to_dict[node_data['data']['type']].append(node_data)
-
+                     
                 elif isinstance(item, neo4j.graph.Relationship):
                     edge_data = self.build_edge_data(item, visited_relations)
                     if edge_data:
@@ -856,8 +867,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                             edge_to_dict[edge_data['data']['label']] = [edge_data]
                         else:
                             edge_to_dict[edge_data['data']['label']].append(edge_data)
-
-        # Process counts if available
+                         
         if count_result:
             count_record = count_result[0]
             node_count_by_label = count_record['nodes_count_by_label']
@@ -873,6 +883,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         }
         
         return nodes, edges, node_to_dict, edge_to_dict, meta_data
+        
 
 
     def parse_id(self,request):

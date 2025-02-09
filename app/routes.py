@@ -20,14 +20,13 @@ from app.lib import convert_to_csv
 from app.lib import generate_file_path
 from app.lib import adjust_file_path
 from flask_socketio import send,emit,join_room,leave_room
-from app.services.subgraph import check_subgraphs
 import json
- 
+from app.services.subgraph import check_subgraphs
 # Load environmental variables
 load_dotenv()
 # Set the allowed origin for WebSocket connections
 
-
+ 
 # set mongo loggin
 logging.getLogger('pymongo').setLevel(logging.CRITICAL)
 
@@ -47,7 +46,7 @@ storage_service = app.config['storage_service']
 init_mail(app)
 
 CORS(app)
- 
+
 # Setup basic logging
 logging.basicConfig(level=logging.DEBUG)
 
@@ -97,6 +96,9 @@ def process_query(current_user_id):
         emit('my responce',{'data':"Connected"})
     logging.info(f"\n\nWebSocket connected for query\n\n")
     data = request.get_json()
+    print("_________________subgraph____________________")
+    check_subgraphs(data)
+    print("_________________subgraph____________________")
     if not data or 'requests' not in data:
         return jsonify({"error": "Missing requests data"}), 400
     
@@ -240,10 +242,9 @@ def process_query(current_user_id):
 
         # if limit:
         #     response_data = limit_graph(response_data, limit)
-        request=request.get_json()
-        check_subgraphs(request)
+        requesut=request.get_json()
         formatted_response = json.dumps(response_data, indent=4)
-        final_graph=group_graph(formatted_response,request)
+        final_graph=group_graph(formatted_response,requesut)
         final_graph=json.dumps(final_graph)
         response = {
         "final_graph": json.loads(final_graph),  # Optionally, parse back to ensure correct structure

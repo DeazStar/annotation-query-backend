@@ -1,6 +1,5 @@
 from collections import defaultdict
- 
- 
+
 def check_subgraphs(data):
     # Extract nodes
     nodes = set(node["node_id"] for node in data["requests"]["nodes"])
@@ -11,56 +10,36 @@ def check_subgraphs(data):
         source, target = predicate["source"], predicate["target"]
         edges[source].add(target)
         edges[target].add(source)
-    
-    # Keep only nodes that are part of some connection
-    connected_nodes = set(edges.keys()) 
-     
-   
+
     # Function to traverse the graph using DFS
-    def dfs(node, visited):
-        stack = [node]
-        
+    def dfs(start_node, visited, subgraph):
+        stack = [start_node]
         while stack:
-            current = stack.pop()
-            if current not in visited:
-               visited.add(current)
-              
-               stack.extend(edges[current] - visited)
+            node = stack.pop()
+            if node not in visited:
+                visited.add(node)
+                subgraph.add(node)
+                stack.extend(edges[node] - visited)
+        return subgraph
 
     visited = set()
-    subgraph_count = 0
+    subgraphs = []
 
-    # Count connected components
-    for node in connected_nodes:  # Only iterate over connected nodes
+    # Identify distinct subgraphs
+    for node in nodes:
         if node not in visited:
-            subgraph_count += 1
-            dfs(node, visited)
+            subgraph = set()
+            subgraph = dfs(node, visited, subgraph)
+            subgraphs.append(subgraph)
 
-    # Debugging: Print detected components
-    print(f"Subgraphs detected: {subgraph_count}")
+    # Debugging: Print detected subgraphs
+    print(f"Subgraphs detected: {len(subgraphs)}")
+    for i, subgraph in enumerate(subgraphs, 1):
+        print(f"Subgraph {i}: {subgraph}")
 
-    # If there's more than one connected component, raise an error
-    if subgraph_count > 1:
-        raise ValueError("Error: More than one subgraph detected. Disconnect extra subgraphs.")
+    # If there's more than one subgraph, raise an error
+    if len(subgraphs) > 1:
+        raise ValueError(f"Error: More than one subgraph detected ({len(subgraphs)} subgraphs).")
 
-# # Example JSON data (one subgraph)
-# data = {
-#     "requests": {
-#         "nodes": [
-#             {"node_id": "n1", "id": "", "type": "transcript", "properties": {}},
-#             {"node_id": "n2", "id": "", "type": "gene", "properties": {}},
-#             {"node_id": "n3", "id": "", "type": "promoter", "properties": {}},
-#             {"node_id": "n4", "id": "", "type": "gene", "properties": {}},  # Not connected
-#             {"node_id": "n5", "id": "", "type": "protein", "properties": {}},  # Not connected
-#         ],
-#         "predicates": [
-#             {"predicate_id": "p1", "type": "transcribed_from", "source": "n1", "target": "n2"},
-#             {"predicate_id": "p2", "type": "associated_with", "source": "n2", "target": "n3"},
-             
-
-#         ]
-#     }
-# }
-
-# # Run the check
-# check_subgraphs(data)
+# Example JSON data
+ 

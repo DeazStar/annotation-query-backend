@@ -41,5 +41,5 @@ def check_subgraphs(data):
     if len(subgraphs) > 1:
         raise ValueError(f"Error: More than one subgraph detected ({len(subgraphs)} subgraphs).")
 
-# Example JSON data
+# Example JSON data#
  

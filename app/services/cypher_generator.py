@@ -654,11 +654,13 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         edge_count_by_label = []
         node_count = 0
         edge_count = 0
-
+        print("result____________",results)
         if len(results) > 2:
             node_and_edge_count = results[1]
         if len(results) > 1:
             count_by_label = results[2]
+        print("count_by_label______",count_by_label)
+        print(" node and edge count",node_and_edge_count)
         nodes = []
         edges = []
         node_dict = {}

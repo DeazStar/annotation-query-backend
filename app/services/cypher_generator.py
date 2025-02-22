@@ -755,9 +755,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         
 
-        print("group nodes _______________________________________________")
-        print(final_graph)
-        print("group nodes _______________________________________________")
+        # print("group nodes _______________________________________________")
+        # print(final_graph)
+        # print("group nodes _______________________________________________")
 
                 
         return final_graph
@@ -828,7 +828,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         """
         match_result = results[0]
         count_result = results[1] if len(results) > 1 else None
-        
+        print("count result___________",count_result)
+        print("match result____",match_result)
         node_count, edge_count = 0, 0
         node_count_by_label, edge_count_by_label = [], []
         nodes, edges = [], []

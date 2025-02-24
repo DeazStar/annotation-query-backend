@@ -107,6 +107,23 @@ def on_leave(data):
     socketio.emit('status', {"status": "disconnected", "message": f"{user_id} has left the room {room}"}, room=room)
 
 
+task_tracker = {
+    "graph": False,
+    "node_count_by_label": False,
+    "edge_count_by_label": False,
+    "node_count": False,
+    "edge_count": False,
+    "summary": False
+}
+
+def check_all_tasks_completed():
+    """Check if all tasks are completed."""
+    return all(task_tracker.values())
+
+def reset_task_tracker():
+    """Reset the task tracker."""
+    for key in task_tracker:
+        task_tracker[key] = False
 
 @app.route('/query', methods=['POST'])
 @token_required
@@ -115,10 +132,12 @@ def process_query(current_user_id):
 
     data = request.get_json()
     annotation_id = data['requests'].get('annotation_id', None)
+
+    # Check if the data is cached in Redis
     # if annotation_id and redis_client.exists(annotation_id):
     #     cached_data = redis_client.get(annotation_id)
     #     cached_data = json.loads(cached_data)
-    #     return cached_data
+    #     return jsonify(cached_data)
 
     async def _process_query():
         try:
@@ -155,33 +174,26 @@ def process_query(current_user_id):
             query_code = db_instance.query_Generator(requests, node_map)
             result = db_instance.run_query(query_code)
 
-            if annotation_id:
-                pass
-                # title =  llm.generate_title(query_code)
-            else:
-                # title = await llm.generate_title(query_code)
-                annotation = {
-                    "current_user_id": str(current_user_id),
-                    "requests": requests,
-                    "query": query_code,
-                    "question": "",
-                    "title": "",
-                    "answer": "",
-                    "summary": "",
-                    "node_count": 0,
-                    "edge_count": 0,
-                    "node_count_by_label": 0,
-                    "edge_count_by_label": 0,
-                    "node_types": ""
-                }
-                # Mock save operation
-
-            graph, node_count_by_label, edge_count_by_label = await process_query_tasks(result, annotation_id, properties)
-            redis_client.setex(annotation_id, 7200, json.dumps(graph))
-            # Generate summary using the results from process_query_tasks
             room = annotation_id
+
+            # Process tasks
+            graph, node_count_by_label, edge_count_by_label = await process_query_tasks(result, annotation_id, properties, room)
+
+            # Save to Redis
+            redis_client.setex(annotation_id, 7200, json.dumps(graph))
+
+            # Generate summary
             summary_val = await summary(graph, requests, node_count_by_label, edge_count_by_label, annotation_id, room)
+
+            # Emit summary
             socketio.emit("update_event", {"status": "pending", "summary": summary_val}, room=room)
+            task_tracker["summary"] = True
+
+            # Check if all tasks are completed
+            if check_all_tasks_completed():
+                socketio.emit('update_event', {"status": "completed", "message": "All tasks have been processed"}, room=room)
+                socketio.emit('close_connection', {"message": "Connection will now close"}, room=room)
+
             return jsonify({"requests": requests, "annotation_id": str(annotation_id)})
 
         except Exception as e:
@@ -192,8 +204,7 @@ def process_query(current_user_id):
     # Run the async function and return the result
     return asyncio.run(_process_query())
 
-async def process_query_tasks(result, annotation_id, properties):
-    room = annotation_id
+async def process_query_tasks(result, annotation_id, properties, room):
     count_by_label_value = result[2] if len(result) > 2 else []
     node_and_edge_count = result[1] if len(result) > 1 else []
     matched_result = result[0]
@@ -204,17 +215,11 @@ async def process_query_tasks(result, annotation_id, properties):
         asyncio.create_task(count_nodes_and_edges(node_and_edge_count, annotation_id, room))
     ]
 
-    try:
-        # Wait for all tasks to complete
-        results = await asyncio.gather(*tasks)
-        graph = results[0]
-        node_count_by_label, edge_count_by_label = results[1]
-        socketio.emit('update_event', {"status": "completed", "message": "All tasks have been processed"}, room=room)
-        socketio.emit('close_connection', {"message": "Connection will now close"}, room=room)
-        return graph, node_count_by_label, edge_count_by_label
-    except Exception as e:
-        socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e
+    # Wait for all tasks to complete
+    results = await asyncio.gather(*tasks)
+    graph = results[0]
+    node_count_by_label, edge_count_by_label = results[1]
+    return graph, node_count_by_label, edge_count_by_label
 
 async def count_nodes_and_edges(node_and_edge_count, annotation_id, room):
     try:
@@ -227,6 +232,8 @@ async def count_nodes_and_edges(node_and_edge_count, annotation_id, room):
         storage_service.update(annotation_id, update_annotation)
 
         socketio.emit("update_event", {"status": "pending", "node_count": node_count, "edge_count": edge_count}, room=room)
+        task_tracker["node_count"] = True
+        task_tracker["edge_count"] = True
         return node_count, edge_count
     except Exception as e:
         socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
@@ -243,6 +250,8 @@ async def count_by_label_function(count_by_label_value, annotation_id, room):
         storage_service.update(annotation_id, update_annotation)
 
         socketio.emit("update_event", {"node_count_by_label": node_count_by_label, "edge_count_by_label": edge_count_by_label}, room=room)
+        task_tracker["node_count_by_label"] = True
+        task_tracker["edge_count_by_label"] = True
         return node_count_by_label, edge_count_by_label
     except Exception as e:
         socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
@@ -256,6 +265,7 @@ async def generate_graph(requests, properties, room):
             # Convert tuple to dictionary if necessary
             request_data = {"nodes": request_data[0], "edges": request_data[1]}
         socketio.emit('update_event', {"graph": True}, room=room)
+        task_tracker["graph"] = True
         return request_data
     except Exception as e:
         socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
@@ -270,12 +280,11 @@ async def summary(graph, requests, node_count_by_label, edge_count_by_label, ann
             "updated_at": datetime.datetime.now()
         }
         storage_service.update(annotation_id, updated_annotation)
-        socketio.emit('update_event', {"summary": summary}, room=room)
-
         return summary
     except Exception as e:
         socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e    
+        raise e
+  
 @app.route('/history', methods=['GET'])
 @token_required
 def process_user_history(current_user_id):

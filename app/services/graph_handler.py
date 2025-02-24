@@ -165,18 +165,28 @@ class Graph_Summarizer:
                 prev_summery=[]
                 self.graph_description(graph)
                 count_by_label  = [ node_count_by_label,edge_count_by_label]
+                print("count_by_label",count_by_label)
                 for i, batch in enumerate(self.descriptions):  
                     if prev_summery:
+                        print("step1_______________  ")
                         if user_query:
                             prompt = SUMMARY_PROMPT_CHUNKING_USER_QUERY.format(description=batch,user_query=user_query,prev_summery=prev_summery, json_query=request, count_by_label=count_by_label)
+                            print("step1_________**______  ")
                         else:
+                            print("step1_________**)______  ")
                             prompt = SUMMARY_PROMPT_CHUNKING.format(description=batch,prev_summery=prev_summery, json_query=request)
+                            print("step1_________**______))  ")
                     else:
+                        print("step2_____________" )
                         if user_query:
                             prompt = SUMMARY_PROMPT_BASED_ON_USER_QUERY.format(description=batch,user_query=user_query, prev_summery='',json_query=request, count_by_label=count_by_label)
+                            print("step2__________*___" )
                         else:
                             prompt = SUMMARY_PROMPT.format(description=batch, json_query=request)
+                            print("step2__________**___" )
+                    print("step3___________")
                     response = self.llm.generate(prompt)
+                    print("step3_____________")
                     prev_summery = [response]  
                 # cleaned_desc = self.clean_and_format_response(response)
                 return response

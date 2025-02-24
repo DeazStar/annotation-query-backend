@@ -24,4 +24,5 @@ cors
 uuid
 nanoid
 matplotlib
-python3-tk
+ 
+google-generativeai

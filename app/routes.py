@@ -170,7 +170,22 @@ def process_query(current_user_id):
             node_map = validate_request(requests, schema_manager.schema)
             if node_map is None:
                 return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
-
+            annotation = {
+                    "current_user_id": str(current_user_id),
+                    "requests": requests,
+                    "query": query_code,
+                    "question": "",
+                    "title": "",
+                    "answer": "",
+                    "summary": "",
+                    "node_count": 0,
+                    "edge_count": 0,
+                    "node_count_by_label": 0,
+                    "edge_count_by_label": 0,
+                    "node_types": ""
+                }
+            annotaion_id= storage_service.save(annotation_id, annotation)
+            socketio.emit("update_event", {"status": "pending", "annotation_id": annotation_id})
             requests = db_instance.parse_id(requests)
             query_code = db_instance.query_Generator(requests, node_map)
             result = db_instance.run_query(query_code)

@@ -124,15 +124,16 @@ def reset_task_tracker():
     """Reset the task tracker."""
     for key in task_tracker:
         task_tracker[key] = False
-
+room=None
 @app.route('/query', methods=['POST'])
 @token_required
 def process_query(current_user_id):
+    global room
     current_user_id = current_user_id
 
     data = request.get_json()
     annotation_id = data['requests'].get('annotation_id', None)
-
+    room = annotation_id
     # Check if the data is cached in Redis
     # if annotation_id and redis_client.exists(annotation_id):
     #     cached_data = redis_client.get(annotation_id)
@@ -197,29 +198,35 @@ def process_query(current_user_id):
             return jsonify({"requests": requests, "annotation_id": str(annotation_id)})
 
         except Exception as e:
+            room=annotation_id
             traceback.print_exc()
-            socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
+            socketio.emit('update_event', {"status": "error", "message": "error happend in the graph"}, room=room)
             return jsonify({"error": str(e)}), 500
 
     # Run the async function and return the result
     return asyncio.run(_process_query())
 
 async def process_query_tasks(result, annotation_id, properties, room):
-    count_by_label_value = result[2] if len(result) > 2 else []
-    node_and_edge_count = result[1] if len(result) > 1 else []
-    matched_result = result[0]
+    room=annotation_id
+    try:
+        count_by_label_value = result[2] if len(result) > 2 else []
+        node_and_edge_count = result[1] if len(result) > 1 else []
+        matched_result = result[0]
 
-    tasks = [
-        asyncio.create_task(generate_graph(matched_result, properties, room)),
-        asyncio.create_task(count_by_label_function(count_by_label_value, annotation_id, room)),
-        asyncio.create_task(count_nodes_and_edges(node_and_edge_count, annotation_id, room))
-    ]
+        tasks = [
+            asyncio.create_task(generate_graph(matched_result, properties, room)),
+            asyncio.create_task(count_by_label_function(count_by_label_value, annotation_id, room)),
+            asyncio.create_task(count_nodes_and_edges(node_and_edge_count, annotation_id, room))
+        ]
 
-    # Wait for all tasks to complete
-    results = await asyncio.gather(*tasks)
-    graph = results[0]
-    node_count_by_label, edge_count_by_label = results[1]
-    return graph, node_count_by_label, edge_count_by_label
+        # Wait for all tasks to complete
+        results = await asyncio.gather(*tasks)
+        graph = results[0]
+        node_count_by_label, edge_count_by_label = results[1]
+        return graph, node_count_by_label, edge_count_by_label
+    except Exception as e:
+        socketio.emit('update_event', {"error": f"Error in process_query_tasks: {str(e)}"}, room=room)
+        return None, None, None 
 
 async def count_nodes_and_edges(node_and_edge_count, annotation_id, room):
     try:

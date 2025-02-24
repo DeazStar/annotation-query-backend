@@ -2,7 +2,10 @@ from app import app
 from dotenv import load_dotenv
 import os
 from flask_socketio import SocketIO
-socketio=SocketIO(app)
+from flask_cors import CORS
+CORS(app, resources={r"/query": {"origins": "*"}})
+
+socketio=SocketIO(app,cors_allowed_origins="*")
 # Load environment variables from .env file
 load_dotenv()
 

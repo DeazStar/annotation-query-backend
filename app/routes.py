@@ -10,7 +10,7 @@ import os
 import threading
 from app import app, databases, schema_manager, db_instance 
 from app.lib import validate_request
-from flask_cors import CORS
+ 
 from app.lib import limit_graph
 from app.lib.auth import token_required
 from app.lib.email import init_mail, send_email
@@ -81,6 +81,14 @@ def get_edges_endpoint(current_user_id):
 def get_relations_for_node_endpoint(current_user_id, node_label):
     relations = json.dumps(schema_manager.get_relations_for_node(node_label), indent=4)
     return Response(relations, mimetype='application/json')
+@socketio.on('connect')
+def handle_connect():
+    print('Client connected')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Client disconnected')
+
 @socketio.on('join')
 def on_join(data):
     try:
@@ -103,15 +111,20 @@ def on_leave(data):
 @token_required
 def process_query(current_user_id):
     current_user_id=current_user_id
-    if redis_client.exists("annotation_id"):
-        cached_data = redis_client.get("annotation_id")
-        cached_data=json.loads(cached_data)
-        return cached_data
+    
+    # data = request.get_json()
+    # annotation_id = data['requests'].get('annotation_id', None)
+    # if annotation_id and redis_client.exists(annotation_id):
+    #     cached_data = redis_client.get(annotation_id)
+
+    #     cached_data=json.loads(cached_data)
+    #     return cached_data
 
     async def _process_query():
         try:
             data = request.get_json()
-             
+            if not data or 'requests' not in data:
+                return jsonify({"error": "Missing requests data"}), 400 
             annotation_id = data['requests'].get('annotation_id', None)
 
             if not data or 'requests' not in data:
@@ -143,16 +156,16 @@ def process_query(current_user_id):
             result = db_instance.run_query(query_code)
 
             if annotation_id:
-                 
-                title =  llm.generate_title(query_code)
+                 pass
+                # title =  llm.generate_title(query_code)
             else:
-                title = await llm.generate_title(query_code)
+                # title = await llm.generate_title(query_code)
                 annotation = {
                     "current_user_id": str(current_user_id),
                     "requests": requests,
                     "query": query_code,
                     "question": "",
-                    "title": title,
+                    "title": '',
                     "answer": "",
                     "summary": "",
                     "node_count": 0,
@@ -168,7 +181,7 @@ def process_query(current_user_id):
             # Generate summary using the results from process_query_tasks
             room=annotation_id
             summary_val = await summary(graph, requests, node_count_by_label, edge_count_by_label, annotation_id,room)
-            socketio.emit({"status":"pending","summary":summary_val},room=room)
+            socketio.emit({"update_event":"pending","summary":summary_val},room=room)
             return jsonify({"requests": requests, "annotation_id": str(annotation_id), "title": title})
 
         except Exception as e:
@@ -194,7 +207,7 @@ async def process_query_tasks(result, annotation_id, properties):
     results = await asyncio.gather(*tasks)
     graph = results[0]   
     node_count_by_label, edge_count_by_label = results[1]   
-    socketio.emit('status', {"status": "completed", "message": "All tasks have been processed"}, room=room)
+    socketio.emit('update_event', {"status": "completed", "message": "All tasks have been processed"}, room=room)
     socketio.emit('close_connection', {"message": "Connection will now close"}, room=room)
     return graph, node_count_by_label, edge_count_by_label
 
@@ -231,7 +244,7 @@ async def generate_graph(requests, properties,room):
     if isinstance(request_data, tuple):
         # Convert tuple to dictionary if necessary
         request_data = {"nodes": request_data[0], "edges": request_data[1]}
-    socketio.emit('update_event',{"summary":request_data},room=room)
+    socketio.emit('update_event',{"graph":True},room=room)
     return request_data
 async def summary(graph, requests, node_count_by_label, edge_count_by_label, annotation_id,room):
     summary = llm.generate_summary(graph, requests,node_count_by_label,edge_count_by_label) or 'Graph too big, could not summarize'

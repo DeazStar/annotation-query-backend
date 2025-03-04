@@ -179,7 +179,7 @@ def process_query(current_user_id):
             annotation = {
                     "current_user_id": str(current_user_id),
                     "requests": requests,
-                    "query": query_code,
+                    "query": "",
                     "question": "",
                     "title": "",
                     "answer": "",
@@ -190,7 +190,7 @@ def process_query(current_user_id):
                     "edge_count_by_label": 0,
                     "node_types": ""
                 }
-            annotaion_id= storage_service.save(annotation_id, annotation)
+            annotaion_id= storage_service.save (annotation)
             socketio.emit("update_event", {"status": "pending", "annotation_id": annotaion_id})
             requests = db_instance.parse_id(requests)
             query_code = db_instance.query_Generator(requests, node_map)

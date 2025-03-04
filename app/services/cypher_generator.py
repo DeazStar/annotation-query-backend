@@ -57,7 +57,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         logger.info(f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code, source):
+    def run_query(self, query_code, source=None):
         results = []
         if isinstance(query_code, list):
             find_query = query_code[0]
@@ -73,8 +73,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                 with self.driver.session() as session:
                     results.append(list(session.run(count_query)))
             except Exception as e:
-                print(e)
-                print("EXCPETION")
+                 
                 results.append([])
                 return results
         return results
@@ -384,7 +383,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             {return_clause}
             '''
         
-        print("QUERY : ", query)
+         
         return query
 
     # Helper method to construct optional match clause
@@ -594,7 +593,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         elif 'predicates' in logic:
             command = self.handle_predicates_not_operation(logic['predicates'], predicate_map, command)
 
-        print("NOT COMMANDS: ", command)
+       
         return command
 
     # Helper method to handle nodes in the NOT operation

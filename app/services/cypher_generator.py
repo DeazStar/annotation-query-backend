@@ -904,6 +904,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         return node_count, edge_count
     def count_by_label_function(count_by_label):
+        print("count _by_label",count_by_label)
         node_count_by_label = []
         edge_count_by_label = []
 

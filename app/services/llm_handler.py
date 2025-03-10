@@ -28,6 +28,7 @@ class LLMHandler:
         return title
 
     def generate_summary(self, graph, request, user_query=None,graph_id=None, summary=None):
+        generate_summary
         summarizer = Graph_Summarizer(self.model)
         summary = summarizer.summary(graph, request, user_query, graph_id, summary)
         return summary

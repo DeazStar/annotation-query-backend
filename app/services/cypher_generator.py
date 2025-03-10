@@ -1,4 +1,7 @@
+import asyncio
 import json
+from flask import jsonify
+
 from typing import List
 import logging
 from dotenv import load_dotenv
@@ -8,8 +11,12 @@ from neo4j import GraphDatabase
 import glob
 import os
 from neo4j.graph import Node, Relationship
-
+import time
 load_dotenv()
+# extensions.py
+from flask_socketio import SocketIO
+
+socketio = SocketIO()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -57,27 +64,35 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
         logger.info(f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code, source=None):
-        results = []
-        if isinstance(query_code, list):
-            find_query = query_code[0]
-            count_query = query_code[1]
-        else:
-            find_query = query_code
-            count_query = None
-        
-        with self.driver.session() as session:
-            results.append(list(session.run(find_query)))
-        if count_query and source != 'hypotehesis':
-            try:
-                with self.driver.session() as session:
-                    results.append(list(session.run(count_query)))
-            except Exception as e:
-                 
-                results.append([])
-                return results
-        return results
 
+ 
+
+    async def run_query(self, query_code , running_processes={}, annotation_id=None):
+        try:
+            task = asyncio.current_task()
+            running_processes[annotation_id] = {"task": task, "cancelled": False}
+            print("running process in run_query", running_processes)
+
+            await asyncio.sleep(120)  # Ensure sleep is awaited
+
+            results = []
+            with self.driver.session() as session:
+                result = session.run(query_code)
+                for record in result:
+                    results.append(record)
+                h=json.dumps(results)
+                print("type of h",type(h))
+                 
+            return h
+            # ✅ Always return a dictionary, not a tuple
+
+        except asyncio.CancelledError:
+            print("i am prited in asyncio")
+            return {"cancelled": "run_query"}  # ✅ Fix JSON response format
+        except Exception as e:
+            print("i am prited in exception")
+            return {"error": str(e)}  # ✅ Fix JSON response format
+  
     def query_Generator(self, requests, node_map, limit=None):
         nodes = requests['nodes']
         predicates = requests.get("predicates", [])

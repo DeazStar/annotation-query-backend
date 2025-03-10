@@ -146,6 +146,7 @@ class Graph_Summarizer:
     def summary(self,graph, request, user_query=None,graph_id=None, summary=None):
         prev_summery=[]
         response = None
+        
         try:
 
             if graph_id:

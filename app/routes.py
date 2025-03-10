@@ -21,6 +21,7 @@ from app.lib import convert_to_csv
 from app.lib import generate_file_path
 from app.lib import adjust_file_path
 from flask_socketio import join_room, leave_room,emit,send
+# from asynciio import process_query_tasks,count_nodes_and_edges,count_by_label_function,generate_graph,summary
 import redis
 from app.services.cypher_generator import CypherQueryGenerator
 from run import socketio
@@ -107,329 +108,146 @@ def on_leave(data):
     leave_room(room)
     socketio.emit('status', {"status": "disconnected", "message": f"{user_id} has left the room {room}"}, room=room)
 
-running_processes_lock = Lock()  
-task_tracker = {
-    "graph": False,
-    "node_count_by_label": False,
-    "edge_count_by_label": False,
-    "node_count": False,
-    "edge_count": False,
-    "summary": False
-}
-
-def check_all_tasks_completed():
-    """Check if all tasks are completed."""
-    print(task_tracker.values())
-    return all(task_tracker.values())
-
-def reset_task_tracker():
-    """Reset the task tracker."""
-    for key in task_tracker:
-        task_tracker[key] = False
 running_processes={}
 @app.route('/query', methods=['POST'])
 @token_required
 def process_query(current_user_id):
-    global room
-    current_user_id = current_user_id
+    try:
+        data = request.get_json()
+        if not data or 'requests' not in data:
+            return jsonify({"error": "Missing requests data"}), 400
+        annotation_id = data['requests'].get('annotation_id', None)
 
-    print("1. Starting process_query function")  # Debug print
-
-    data = request.get_json()
-    print(f"2. Received data: {data}")  # Debug print
-
-    annotation_id = data['requests'].get('annotation_id', None)
-    room = annotation_id
-    print(f"3. Annotation ID: {annotation_id}, Room: {room}")  # Debug print
-
-    if annotation_id in running_processes and running_processes[annotation_id].get('cancelled', False):
-        print("4. Task has been cancelled")  # Debug print
-        return jsonify({"error": "Task has been cancelled"}), 400
-     
-    # if annotation_id and redis_client.exists(annotation_id):
-    #     cached_data = redis_client.get(annotation_id)
-    #     cached_data = json.loads(cached_data)
-    #     print("5. Returning cached data")  # Debug print
-    #     return jsonify(cached_data)
-
-    async def _process_query():
-        try:
-            print("6. Starting _process_query coroutine")  # Debug print
-            data = request.get_json()
-            print(f"7. Received data in _process_query: {data}")  # Debug print
-
-            if not data or 'requests' not in data:
-                print("8. Missing requests data")  # Debug print
-                return jsonify({"error": "Missing requests data"}), 400
-            
-            annotation_id = data['requests'].get('annotation_id', None)
-            print(f"9. Annotation ID in _process_query: {annotation_id}")  # Debug print
-            
-            limit = request.args.get('limit')
-            properties = request.args.get('properties')
-            source = request.args.get('source')
-            if properties:
-                properties = bool(strtobool(properties))
-            else:
+        # if annotation_id and redis_client.exists(annotation_id):
+        #     cached_data = redis_client.get(annotation_id)
+        #     cached_data = json.loads(cached_data)
+        #     return jsonify(cached_data)
+        limit = request.args.get('limit')
+        properties = request.args.get('properties')
+        source = request.args.get('source')
+        if properties:
+            properties = bool(strtobool(properties))
+        else:
                 properties = False
 
-            if limit:
-                try:
-                    limit = int(limit)
-                except ValueError:
-                    print("10. Invalid limit value")  # Debug print
-                    return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
-            else:
-                limit = None
+        if limit:
+            try:
+                limit = int(limit)
+            except ValueError:
+                print("10. Invalid limit value")  # Debug print
+                return jsonify({"error": "Invalid limit value. It should be an integer."}), 400
+        else:
+            limit = None
 
+        requests = data['requests']
+                
+        node_map = validate_request(requests, schema_manager.schema)
+        if node_map is None:
+            print("12. Invalid node_map returned by validate_request")  # Debug print
+            return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
+            
+        annotation = {
+                        "current_user_id": str(current_user_id),
+                        "requests": requests,
+                        "query": '',
+                        "question": "",
+                        "title": "",
+                        "answer": "",
+                        "summary": "",
+                        "node_count": 0,
+                        "edge_count": 0,
+                        "node_count_by_label": 0,
+                        "edge_count_by_label": 0,
+                        "node_types": ""
+                    }
+                
+        annotation_id = str(storage_service.save(annotation))   
+        socketio.emit('update_event', {"status": "pending", "annotation_id": annotation_id})
+        room = annotation_id 
+
+
+        async def _process_query():
+            
+            
             requests = data['requests']
-            print(f"11. Requests: {requests}")  # Debug print
-
-            node_map = validate_request(requests, schema_manager.schema)
-            if node_map is None:
-                print("12. Invalid node_map returned by validate_request")  # Debug print
-                return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
-         
-            annotation = {
-                    "current_user_id": str(current_user_id),
-                    "requests": requests,
-                    "query": '',
-                    "question": "",
-                    "title": "",
-                    "answer": "",
-                    "summary": "",
-                    "node_count": 0,
-                    "edge_count": 0,
-                    "node_count_by_label": 0,
-                    "edge_count_by_label": 0,
-                    "node_types": ""
-                }
-        
-            # annotation_id = str(storage_service.save(annotation))
-            print(f"13. Annotation saved with ID: {annotation_id}")  # Debug print
-
-            with running_processes_lock:
-                task = asyncio.current_task()
-                running_processes[annotation_id] = {"task": task, "cancelled": False}
-           
-            socketio.emit("update_event", {"status": "pending", "annotation_id": annotation_id})
-            print("14. Emitted update_event with pending status")  # Debug print
-
+            print("requests", requests)
             requests = db_instance.parse_id(requests)
             query_code = db_instance.query_Generator(requests, node_map)
-            print(f"15. Generated query code: ***")  # Debug print
-
-            result = db_instance.run_query(query_code,source)
-            print(f"16. Query result: ****")  # Debug print
-
-            room = annotation_id
-
-
-            print("room_______________________",room)
-
-            # Process tasks
-            graph, node_count_by_label, edge_count_by_label = await process_query_tasks(result, annotation_id, properties, room)
-            print(f" Node count by label: {node_count_by_label}, Edge count by label: {edge_count_by_label}")  # Debug print
-
-            # Save to Redis
-            if annotation_id != 'None':
-                redis_client.setex(annotation_id, 7200, json.dumps(graph))
-                print("18. Saved data to Redis")  # Debug print
-
-            # Generate summary
-            summary_val = await summary(graph, requests, node_count_by_label, edge_count_by_label, annotation_id, room)
-            print(f"19. Generated summary: {summary_val}")  # Debug print
-
-            # Emit summary
-            socketio.emit("update_event", {"status": "pending", "summary": summary_val}, room=room)
-            print("20. Emitted update_event with summary")  # Debug print
-
-            task_tracker["summary"] = True
-
-            # Check if all tasks are completed
-            if check_all_tasks_completed():
-                socketio.emit('update_event', {"status": "completed", "message": "All tasks have been processed"}, room=room)
-                socketio.emit('close_connection', {"message": "Connection will now close"}, room=room)
-                print("21. All tasks completed, emitted update_event and close_connection")  # Debug print
-
+            print("here please")
+                # Create the query task
+            query_task =  asyncio.create_task(db_instance.run_query(query_code, running_processes,annotation_id))
+            query_task= await query_task
+            print("here please 2")
+                # Store the task in running_processes
+          
+                
+                # graph, node_count_by_label, edge_count_by_label = await process_query_tasks(result, annotation_id, properties, room)
+                
+                # print(f"Node count by label: {node_count_by_label}, Edge count by label: {edge_count_by_label}")
+                
+                # Save to Redis
+                # if annotation_id != 'None':
+                    # redis_client.setex(annotation_id, 7200, json.dumps(graph))4
+            requests=""
+                
             return jsonify({"requests": requests, "annotation_id": str(annotation_id)})
-        except asyncio.CancelledError:
-            print("22. Task has been cancelled")  # Debug print
-            socketio.emit('update_event', {"status": "cancelled", "message": "Task has been cancelled"}, room=room)
-            return jsonify({"error": "Task has been cancelled"}), 400
-        except Exception as e:
-            room = annotation_id
-            print("room_____",room)
-            print(f"23. Exception occurred: {e}")  # Debug print
-            traceback.print_exc()
-            socketio.emit('update_event', {"status": "error", "message": "error happened in the graph"}, room=room)
-            return jsonify({"error": str(e)}), 500
-        finally:
-            print("24. Cleaning up running_processes and resetting task_tracker")  # Debug print
-            with running_processes_lock:
-                if annotation_id in running_processes:
-                    del running_processes[annotation_id]
-            reset_task_tracker()
-     
-    return asyncio.run(_process_query())
-     
-async def process_query_tasks(result, annotation_id, properties, room):
-    try:
-        # Assuming 'result' is your list of records
-        if len(result) > 1:  # Check if there are at least 2 records
-            record = result[1]  # Get the second record (index 1)
-            print("record",record[0])
-            node_count_by_label= record[0].get('nodes_count_by_label')
-            edge_count_by_type=record[0].get('edges_count_by_type')
-            
-  
-        node_and_edge_count = result[1] if len(result) > 1 else []
-        matched_result = result[0]
-        print("step -1")
-        tasks = [
-            asyncio.create_task(generate_graph(matched_result, properties, room)),
-            asyncio.create_task(count_by_label_function(node_count_by_label,edge_count_by_type, annotation_id, room)),
-            asyncio.create_task(count_nodes_and_edges(node_and_edge_count, annotation_id, room))
-        ]
-
-        print("step -2")
-        # while not check_all_tasks_completed():
-        #     with running_processes_lock:
-        #         if running_processes.get(annotation_id, {}).get('cancelled', False):
-        #             raise asyncio.CancelledError("Task has been cancelled")
-        #     await asyncio.sleep(1)  # Sleep to avoid busy-waiting
-        # print("step -3")
-        # print("Step before asyncio.gather")
-        try:
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    print(f"Task failed with exception: {result}")
-        except Exception as e:
-            print(f"asyncio.gather failed with exception: {e}")
-
-        graph = results[0]
-        node_count_by_label, edge_count_by_label = results[1]
-        return graph, node_count_by_label, edge_count_by_label
-
+        return asyncio.run(_process_query())
     except asyncio.CancelledError:
-         
-        print(f"Task with annotation_id {annotation_id} has been cancelled")
+            
         socketio.emit('update_event', {"status": "cancelled", "message": "Task has been cancelled"}, room=room)
-        return None, None, None
+        return jsonify({"error": "Task has been cancelled"}), 400
     except Exception as e:
-        socketio.emit('update_event', {"error": f"Error in process_query_tasks: {str(e)}"}, room=room)
-        return None, None, None
-    
-"""Each query task is tracked by its annotation_id in the running_processes dictionary.
-/cancel endpoint sets the cancelled flag for the task and calls task.cancel().
-he task checks for cancellation, raises asyncio.CancelledError
-""" 
-@app.route('/cancel', methods=['POST'])
-@token_required
-def cancel_task(current_user_id):
-    data = request.get_json()
-    print("running in cancel",running_processes)
+        traceback.print_exc()
+        socketio.emit('update_event', {"status": "error", "message": "error happened in the graph"}, room=room)
+        return jsonify({"error": str(e)}), 500
+    finally:
+        print("24. Cleaning up running_processes and resetting task_tracker")
+        if annotation_id in running_processes:
+            del running_processes[annotation_id]
      
-    
-    annotation_id = data['requests']['annotation_id'] 
-    
+@app.route("/cancel", methods=['POST'])
+@token_required
+def cancel_task_main(current_user_id):
+    data = request.get_json()
+    annotation_id = data.get('annotation_id')
+
     if not annotation_id:
         return jsonify({"error": "Missing annotation_id"}), 400
 
-    with running_processes_lock:
-        if annotation_id in running_processes:
-            task_info = running_processes[annotation_id]
-            if not task_info.get('cancelled', False):
-                task_info["cancelled"] = True
-                task = task_info.get("task")
-               
-                if task and not task.done():
-                    task.cancel()  # Cancel the task
-                    return jsonify({"message": f"Task with annotation_id {annotation_id} has been cancelled"}), 200
-            else:
-                return jsonify({"error": f"Task with annotation_id {annotation_id} is already cancelled"}), 400
-        else:
-            return jsonify({"error": f"No running task found with annotation_id {annotation_id}"}), 404
+    print("running process", running_processes)
 
-async def count_nodes_and_edges(node_and_edge_count, annotation_id, room):
+    # Run the async function synchronously
     try:
-        print("node count and edges")
-        node_count, edge_count = CypherQueryGenerator.count_node_and_edges_function(node_and_edge_count)
-        print ("node_count",node_count)
-        print("edge_count",edge_count)
-
-
-        update_annotation = {
-            "node_count": node_count,
-            "edge_count": edge_count,
-            "updated_at": datetime.datetime.now()
-        }
-        storage_service.update(annotation_id, update_annotation)
-        
-        # print("update_event", {"status": "pending", "node_count": node_count, "edge_count": edge_count}, room=room)
-        socketio.emit("update_event", {"status": "pending", "node_count": node_count, "edge_count": edge_count}, room=room)
-        print("node count by label function ")
-        task_tracker["node_count"] = True
-        task_tracker["edge_count"] = True
-        print("count_nodes_and_edges task completed")
-        return node_count, edge_count
+        result=asyncio.run(cancel_task(annotation_id))
+        return result
     except Exception as e:
-        socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e
+        return jsonify({"error":str(e)}),500
 
-async def count_by_label_function(node_count_by_label,edge_count_by_type, annotation_id, room):
+
+async def cancel_task(annotation_id):
+    """Async function to cancel a running task"""
     
-    try:
-         
-         
-        update_annotation = {
-            "node_count_by_label": node_count_by_label,
-            "edge_count_by_label": edge_count_by_type,
-            "updated_at": datetime.datetime.now()
-        }
-        storage_service.update(annotation_id, update_annotation)
+    if annotation_id in running_processes:
+        print("running_processes",running_processes)
+        task_info = running_processes[annotation_id]
 
-        print("node&&&&&&&&&&&&&&&&",node_count_by_label,"edges",edge_count_by_type)
-        socketio.emit("update_event", {"node_count_by_label": node_count_by_label, "edge_count_by_label": edge_count_by_type}, room=room)
-        print("node count by label function ")
-        task_tracker["node_count_by_label"] = True
-        task_tracker["edge_count_by_label"] = True
-        return node_count_by_label, edge_count_by_type
-    except Exception as e:
-        socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e
+        if not task_info.get('cancelled', False):
+            task_info['cancelled'] = True
+            task = task_info["task"]
+            print("task ", task)
+            task.cancel()
 
-async def generate_graph(requests, properties, room):
-    print("generate grpah function ")
-    try:
-        request_data = CypherQueryGenerator.graph_function(requests, properties)
-
-        if isinstance(request_data, tuple):
-            # Convert tuple to dictionary if necessary
-            request_data = {"nodes": request_data[0], "edges": request_data[1]}
-        # print('update_event', {"graph": True}, room=room)
-        socketio.emit('update_event', {"graph": True}, room=room)
-        task_tracker["graph"] = True
-        return request_data
-    except Exception as e:
-        socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e
-
-async def summary(graph, requests, node_count_by_label, edge_count_by_label, annotation_id, room):
-    try:
-        print("summary ")
-        # summary = llm.generate_summary(graph, requests, node_count_by_label, edge_count_by_label) or 'Graph too big, could not summarize'
-        summary = "summary of the graph is here"
-        updated_annotation = {
-            "summary": summary,
-            "updated_at": datetime.datetime.now()
-        }
-        storage_service.update(annotation_id, updated_annotation)
-        return summary
-    except Exception as e:
-        socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
-        raise e
+            try:
+                await task
+                print("task in await ", task)
+            except asyncio.CancelledError:
+                socketio.emit('update_event', {"status": "cancelled", "message": "Task has been cancelled"}, room=annotation_id)
+                return jsonify({"status": "cancelled", "message": "Task has been cancelled"}), 200
+        else:
+            return jsonify({"error": f"Task with annotation_id {annotation_id} is already cancelled"}), 400
+    else:
+        return jsonify({"error": f"No running task found with annotation_id {annotation_id}"}), 404
+    
   
 @app.route('/history', methods=['GET'])
 @token_required

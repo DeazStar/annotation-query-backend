@@ -67,31 +67,29 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
  
 
-    async def run_query(self, query_code , running_processes={}, annotation_id=None):
+    async def run_query(self, query_code, running_processes={}, annotation_id=None):
         try:
             task = asyncio.current_task()
             running_processes[annotation_id] = {"task": task, "cancelled": False}
             print("running process in run_query", running_processes)
 
-            await asyncio.sleep(120)  # Ensure sleep is awaited
+            await asyncio.sleep(60)  # Ensure sleep is awaited
 
             results = []
             with self.driver.session() as session:
                 result = session.run(query_code)
                 for record in result:
                     results.append(record)
-                h=json.dumps(results)
-                print("type of h",type(h))
-                 
+                h = json.dumps(results)
+             
+                    
             return h
-            # ✅ Always return a dictionary, not a tuple
-
         except asyncio.CancelledError:
-            print("i am prited in asyncio")
-            return {"cancelled": "run_query"}  # ✅ Fix JSON response format
+             
+            return {"cancelled": "run_query"}
         except Exception as e:
-            print("i am prited in exception")
-            return {"error": str(e)}  # ✅ Fix JSON response format
+             
+            return {"error": str(e)}
   
     def query_Generator(self, requests, node_map, limit=None):
         nodes = requests['nodes']

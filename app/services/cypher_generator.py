@@ -69,27 +69,17 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
     async def run_query(self, query_code, running_processes={}, annotation_id=None):
         try:
-            task = asyncio.current_task()
-            running_processes[annotation_id] = {"task": task, "cancelled": False}
-            print("running process in run_query", running_processes)
-
-            await asyncio.sleep(60)  # Ensure sleep is awaited
-
+              # Ensure sleep is awaited
             results = []
             with self.driver.session() as session:
-                result = session.run(query_code)
+                #TODO THE FUNCTION FOR lazy loading execute_read
+                result = session.execute_read(lambda tx:tx.run (query_code))
                 for record in result:
                     results.append(record)
-                h = json.dumps(results)
-             
-                    
-            return h
-        except asyncio.CancelledError:
-             
-            return {"cancelled": "run_query"}
         except Exception as e:
-             
-            return {"error": str(e)}
+            return json.dumps({"error":"run_query","error_value":str(e)})
+                 
+        
   
     def query_Generator(self, requests, node_map, limit=None):
         nodes = requests['nodes']

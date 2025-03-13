@@ -10,6 +10,7 @@ import os
 import threading
 from app import app, databases, schema_manager, db_instance 
 from app.lib import validate_request
+from app.multithreading import start_task
  
 from app.lib import limit_graph
 from app.lib.auth import token_required
@@ -161,33 +162,19 @@ def process_query(current_user_id):
         socketio.emit('update_event', {"status": "pending", "annotation_id": annotation_id})
         room = annotation_id 
 
-        async def _process_query():
-            requests = data['requests']
-            print("requests", requests)
-            requests = db_instance.parse_id(requests)
-            query_code = db_instance.query_Generator(requests, node_map)
-            print("here please")
-            query_task = asyncio.create_task(db_instance.run_query(query_code, running_processes, annotation_id))
-            running_processes[annotation_id] = {"task": query_task, "cancelled": False}
-            await query_task
-            print("here please 2")
-            requests = ""
-            return jsonify({"requests": requests, "annotation_id": str(annotation_id)})
+         
+        requests = data['requests']
+        print("requests", requests)
+        requests = db_instance.parse_id(requests)
+        query_code = db_instance.query_Generator(requests, node_map)
+        print("here please")
+        start_task( query_code,annotation_id)
+         
+         
+         
 
-        # Ensure an event loop exists for the current thread
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError as e:
-            if "There is no current event loop in thread" in str(e):
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            else:
-                raise e
-
-        return loop.run_until_complete(_process_query())
-    except asyncio.CancelledError:
-        socketio.emit('update_event', {"status": "cancelled", "message": "Task has been cancelled"}, room=room)
-        return jsonify({"error": "Task has been cancelled"}), 400
+    
+     
     except Exception as e:
         traceback.print_exc()
         socketio.emit('update_event', {"status": "error", "message": "error happened in the graph"}, room=room)
@@ -206,53 +193,15 @@ def cancel_task_main(current_user_id):
     if not annotation_id:
         return jsonify({"error": "Missing annotation_id"}), 400
 
-    print("running process", running_processes)
-
     try:
-        # Ensure an event loop exists for the current thread
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError as e:
-            if "There is no current event loop in thread" in str(e):
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            else:
-                raise e
-
-        result = loop.run_until_complete(cancel_task(annotation_id))
-        return result
+        task_id=annotation_id
+        stop(task_id)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-async def cancel_task(annotation_id):
-    """Async function to cancel a running task"""
-    if annotation_id in running_processes:
-        print("running_processes", running_processes)
-        task_info = running_processes[annotation_id]
-
-        if not task_info.get('cancelled', False):
-            task_info['cancelled'] = True
-            task = task_info["task"]
-            print("task ", task)
-            if task.cancel():
-                try:
-                    await task
-                    print("task in await ", task)
-                except asyncio.CancelledError:
-                    socketio.emit('update_event', {"status": "cancelled", "message": "Task has been cancelled"}, room=annotation_id)
-                    return jsonify({"status": "cancelled", "message": "Task has been cancelled"}), 200
-                except Exception as e:
-                     
-                    return jsonify({"error": str(e)}), 500
-            else:
-                print("task not cancelled")
-        else:
-            return jsonify({"error": f"Task with annotation_id {annotation_id} is already cancelled"}), 400
-    else:
-        return jsonify({"error": f"No running task found with annotation_id {annotation_id}"}), 404
+        return jsonify({"error":"cancel "})
+          
 
 
-    
+
   
 @app.route('/history', methods=['GET'])
 @token_required

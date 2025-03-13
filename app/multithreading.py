@@ -17,10 +17,16 @@ app = Flask(__name__)
 exit_event = threading.Event()
 tasks = {}
 threads = []
+results = []
 stop_event = Event()
 
-def run_query(query_code, stop_event, results):
+def run_query(query_code, stop_event):
     """Executes a query and stores results."""
+     
+
+
+    CypherQueryGenerator.run_query(query_code,stop_event)
+    """
     try:
         with db_instance.session() as session:
             result = session.execute_read(lambda tx: tx.run(query_code))
@@ -30,6 +36,10 @@ def run_query(query_code, stop_event, results):
                 results.append(record)
     except Exception as e:
         results.append({"error": "run_query", "error_value": str(e)})
+    
+    
+    """
+    
 
 def generate_graph(requests, properties, room):
     try:
@@ -94,12 +104,12 @@ def generate_summary(graph, requests, node_count_by_label, edge_count_by_label, 
         socketio.emit('update_event', {"status": "error", "message": str(e)}, room=room)
         raise e
 
-def execute_graph_tasks():
+def execute_graph_tasks(query_code,annotation_id):
     """Executes tasks in proper sequence with dependencies."""
-    results = []
+    room=annotation_id
     output = {}
     
-    query_thread = Thread(target=run_query, args=(query_code, stop_event, results))
+    query_thread = Thread(target=run_query, args=(query_code, stop_event))
     threads.append(query_thread)
     query_thread.start()
     query_thread.join()
@@ -108,9 +118,9 @@ def execute_graph_tasks():
         print("No query results available.")
         return
     
-    graph_thread = Thread(target=generate_graph, args=(results, output, 'graph_room'))
-    count_thread = Thread(target=count_by_label_function, args=(results, output, 'annotation_id', 'count_room'))
-    nodes_edges_thread = Thread(target=count_nodes_and_edges, args=(results, 'annotation_id', 'count_room'))
+    graph_thread = Thread(target=generate_graph, args=(results, output, room))
+    count_thread = Thread(target=count_by_label_function, args=(results, output, annotation_id, room))
+    nodes_edges_thread = Thread(target=count_nodes_and_edges, args=(results, annotation_id, room))
     
     threads.extend([graph_thread, count_thread, nodes_edges_thread])
     graph_thread.start()
@@ -127,12 +137,12 @@ def execute_graph_tasks():
         summary_thread.start()
         summary_thread.join()
 
-@app.route('/start', methods=['POST'])
-def start_tasks():
+ 
+def start_tasks(query_code,annotation_id):
     """Starts the tasks in a separate thread."""
     global stop_event, threads
     stop_event.clear()
-    main_thread = Thread(target=execute_graph_tasks)
+    main_thread = Thread(target=execute_graph_tasks,args=(query_code,annotation_id))
     threads.append(main_thread)
     main_thread.start()
     return jsonify({"message": "Tasks started"})
@@ -148,5 +158,4 @@ def cancel_tasks():
     threads.clear()
     return jsonify({"message": "Tasks canceled"})
 
-if __name__ == '__main__':
-    app.run(debug=True)
+ 

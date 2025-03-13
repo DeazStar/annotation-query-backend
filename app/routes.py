@@ -10,7 +10,7 @@ import os
 import threading
 from app import app, databases, schema_manager, db_instance 
 from app.lib import validate_request
-from app.multithreading import start_task
+from app.multithreading import start_tasks,cancel_tasks
  
 from app.lib import limit_graph
 from app.lib.auth import token_required
@@ -109,19 +109,25 @@ def on_leave(data):
     leave_room(room)
     socketio.emit('status', {"status": "disconnected", "message": f"{user_id} has left the room {room}"}, room=room)
 
-running_processes={}
 @app.route('/query', methods=['POST'])
 @token_required
 def process_query(current_user_id):
     try:
+        print("1. Entered process_query")  # Debug print
         data = request.get_json()
+        print(f"2. Received data: {data}")  # Debug print
+        
         if not data or 'requests' not in data:
+            print("3. Missing 'requests' in data")  # Debug print
             return jsonify({"error": "Missing requests data"}), 400
-        annotation_id = data['requests'].get('annotation_id', None)
 
+        annotation_id = data['requests'].get('annotation_id', None)
+        print(f"4. annotation_id: {annotation_id}")  # Debug print
+        
         limit = request.args.get('limit')
         properties = request.args.get('properties')
         source = request.args.get('source')
+
         if properties:
             properties = bool(strtobool(properties))
         else:
@@ -137,12 +143,13 @@ def process_query(current_user_id):
             limit = None
 
         requests = data['requests']
-                
+        print(f"11. Requests received: {requests}")  # Debug print
+        
         node_map = validate_request(requests, schema_manager.schema)
         if node_map is None:
             print("12. Invalid node_map returned by validate_request")  # Debug print
             return jsonify({"error": "Invalid node_map returned by validate_request"}), 400
-            
+
         annotation = {
             "current_user_id": str(current_user_id),
             "requests": requests,
@@ -157,47 +164,40 @@ def process_query(current_user_id):
             "edge_count_by_label": 0,
             "node_types": ""
         }
-                
+        
         annotation_id = str(storage_service.save(annotation))   
+        print(f"13. Annotation saved with ID: {annotation_id}")  # Debug print
+        
         socketio.emit('update_event', {"status": "pending", "annotation_id": annotation_id})
         room = annotation_id 
 
-         
-        requests = data['requests']
-        print("requests", requests)
         requests = db_instance.parse_id(requests)
-        query_code = db_instance.query_Generator(requests, node_map)
-        print("here please")
-        start_task( query_code,annotation_id)
-         
-         
-         
+        print(f"14. Parsed requests: {requests}")  # Debug print
 
-    
-     
+        query_code = db_instance.query_Generator(requests, node_map)
+        print(f"15. Query code generated: {query_code}")  # Debug print
+        
+        start_tasks(query_code, annotation_id)
+        print("16. Started tasks")  # Debug print
+
     except Exception as e:
+        print(f"17. Exception: {str(e)}")  # Debug print
         traceback.print_exc()
         socketio.emit('update_event', {"status": "error", "message": "error happened in the graph"}, room=room)
         return jsonify({"error": str(e)}), 500
     finally:
         print("24. Cleaning up running_processes and resetting task_tracker")
-        if annotation_id in running_processes:
-            del running_processes[annotation_id]
+         
+
      
 @app.route("/cancel", methods=['POST'])
 @token_required
-def cancel_task_main(current_user_id):
-    data = request.get_json()
-    annotation_id = data.get('annotation_id')
-
-    if not annotation_id:
-        return jsonify({"error": "Missing annotation_id"}), 400
-
+def cancel_task():
     try:
-        task_id=annotation_id
-        stop(task_id)
+        cancel_tasks()
     except Exception as e:
-        return jsonify({"error":"cancel "})
+         
+        raise e
           
 
 

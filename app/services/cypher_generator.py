@@ -12,6 +12,7 @@ import glob
 import os
 from neo4j.graph import Node, Relationship
 import time
+ 
 load_dotenv()
 # extensions.py
 from flask_socketio import SocketIO
@@ -67,15 +68,18 @@ class CypherQueryGenerator(QueryGeneratorInterface):
 
  
 
-    async def run_query(self, query_code, running_processes={}, annotation_id=None):
+    def run_query(self, query_code,stop_event ):
         try:
               # Ensure sleep is awaited
+            print("stop event",stop_event)
             results = []
             with self.driver.session() as session:
                 #TODO THE FUNCTION FOR lazy loading execute_read
-                result = session.execute_read(lambda tx:tx.run (query_code))
-                for record in result:
-                    results.append(record)
+                result = session.execute_read(lambda tx: tx.run(query_code))
+            for record in result:
+                if stop_event.is_set():
+                    break
+                results.append(record)
         except Exception as e:
             return json.dumps({"error":"run_query","error_value":str(e)})
                  

@@ -21,3 +21,10 @@ flask-redis==0.4.0
 nanoid==2.0.0
 networkx==3.4.2
 elasticsearch==9.0.1
+
+certifi==2025.6.15
+charset-normalizer==3.4.2
+idna==3.10
+requests==2.32.4
+requests-sse==0.5.2
+urllib3==2.5.0

@@ -5,7 +5,7 @@ from flask_socketio import SocketIO
 from app.services.schema_data import SchemaManager
 from app.services.cypher_generator import CypherQueryGenerator
 from app.services.metta_generator import MeTTa_Query_Generator
-from app.services.mork_generator_copy import MorkQueryGenerator
+from app.services.mork_generator import MorkQueryGenerator
 from db import mongo_init
 from app.services.llm_handler import LLMHandler
 from app.persistence import AnnotationStorageService, UserStorageService

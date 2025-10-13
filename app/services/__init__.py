@@ -1,7 +1,7 @@
 from .schema_data import SchemaManager
 from .metta_generator import MeTTa_Query_Generator
 from .query_generator_interface import QueryGeneratorInterface
-from .mork_generator_copy import MorkQueryGenerator
+from .mork_generator import MorkQueryGenerator
 from .llm_models import OpenAIModel, GeminiModel
 from .graph_handler import Graph_Summarizer
 from .metta import Metta_Ground, metta_seralizer, recurssive_seralize

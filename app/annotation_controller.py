@@ -5,7 +5,14 @@ import json
 import os
 import threading
 import datetime
-from app.workers.task_handler import generate_result, start_thread, reset_task, reset_status
+from app.workers.task_handler import (
+    generate_result,
+    start_thread,
+    reset_task,
+    reset_status,
+    start_dedup_replication,
+)
+from app.lib.query_dedup import resolve as resolve_query_dedup
 from app.lib import convert_to_csv, generate_file_path, \
     adjust_file_path
 import time
@@ -14,6 +21,22 @@ from app.persistence import AnnotationStorageService
 
 llm = app.config['llm_handler']
 EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
+
+
+def _start_query_work(annotation_id, args, query, request, species, data_source):
+    mode, leader_id = resolve_query_dedup(
+        annotation_id,
+        query,
+        request,
+        species,
+        data_source,
+        app.config.get('db_type', 'cypher'),
+    )
+    if mode in ('follower', 'cache') and leader_id:
+        start_dedup_replication(annotation_id, leader_id, args, mode)
+    else:
+        start_thread(annotation_id, args)
+
 
 def handle_client_request(query, request, current_user_id, node_types, species, data_source):
     annotation_id = request.get('annotation_id', None)
@@ -48,7 +71,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
                                'label_count_done': label_count_done}, 'query': query, 'request': request,
                 'summary': summary, 'meta_data': meta_data, 'data_source': data_source, 'species': species}
 
-        start_thread(annotation_id, args)
+        _start_query_work(annotation_id, args, query, request, species, data_source)
         return Response(
             json.dumps({"annotation_id": str(annotation_id)}),
             mimetype='application/json')
@@ -65,7 +88,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         args = {'all_status': {'result_done': result_done, 'total_count_done': total_count_done,
                                'label_count_done': label_count_done}, 'query': query, 'request': request,
                 'summary': None, 'meta_data': None, 'data_source': data_source, 'species': species}
-        start_thread(annotation_id, args)
+        _start_query_work(annotation_id, args, query, request, species, data_source)
 
         return Response(
             json.dumps({"annotation_id": str(annotation_id)}),
@@ -85,9 +108,9 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
 
         args = {'all_status': {'result_done': result_done, 'total_count_done': total_count_done,
                                'label_count_done': label_count_done}, 'query': query, 'request': request,
-                'summary': None, 'meta_data': None, 'species': species}
+                'summary': None, 'meta_data': None, 'species': species, 'data_source': data_source}
 
-        start_thread(annotation_id, args)
+        _start_query_work(annotation_id, args, query, request, species, data_source)
 
         return Response(
             json.dumps({'annotation_id': str(annotation_id)}),

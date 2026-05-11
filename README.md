@@ -32,14 +32,29 @@ _Supported OS:_ **Linux & Mac**
    pip install -r requirements.txt
    ```
 
-4. **Configure Environment Variables**:
-   Create a `.env` file in the root folder with the following content:
-   ```plaintext
-   NEO4J_URL=your_neo4j_url
-   NEO4J_USERNAME =your_neo4j_user
-   NEO4J_PASSWORD=your_neo4j_password
+4. **Build the Native Graph Module**:
+   Compile the C++ core before running:
+   ```sh
+   python setup.py build_ext --inplace
    ```
-5. **Flask-Mail Configuration**:
+
+5. **Configure Environment Variables**:
+   Create a `.env` file in the root folder (see `.env.example` for a template):
+   ```plaintext
+   # Neo4j Connections
+   HUMAN_NEO4J_URI=your_human_neo4j_url
+   HUMAN_NEO4J_USERNAME=neo4j
+   HUMAN_NEO4J_PASSWORD=your_human_password
+
+   FLY_NEO4J_URI=your_fly_neo4j_url
+   FLY_NEO4J_USERNAME=neo4j
+   FLY_NEO4J_PASSWORD=your_fly_password
+
+   # Redis
+   REDIS_URL=redis://localhost:6379/0
+   ```
+
+6. **Flask-Mail Configuration**:
    Add the following environment variables for email functionality:
    `MAIL_SERVER`: The address of the mail server that the application will use to send emails (e.g., smtp.gmail.com for Gmail).
 
@@ -116,11 +131,18 @@ flask run
    cypher_data: Folder for storing Neo4j data.
 
 2. **Configure Environment Variables**:
-   Create a `.env` file in the root folder with the following content:
+   Create a `.env` file (refer to `.env.example`):
    ```plaintext
-   NEO4J_URL=your_neo4j_url
-   NEO4J_USERNAME =your_neo4j_user
-   NEO4J_PASSWORD=your_neo4j_password
+   HUMAN_NEO4J_URI=your_human_neo4j_url
+   HUMAN_NEO4J_USERNAME=neo4j
+   HUMAN_NEO4J_PASSWORD=your_password
+
+   FLY_NEO4J_URI=your_fly_neo4j_url
+   FLY_NEO4J_USERNAME=neo4j
+   FLY_NEO4J_PASSWORD=your_password
+
+   MONGO_URI=your_mongodb_url
+   REDIS_URL=redis://localhost:6379/0
    ```
 3. **Run**:
    Ensure you are in the root directory of the project and then run:

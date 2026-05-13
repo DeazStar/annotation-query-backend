@@ -22,7 +22,9 @@ class AnnotationStorageService():
             edge_count_by_label=annotation.get("edge_count_by_label", None),
             status=annotation.get('status', 'PENDING'),
             species=annotation.get('species', 'human'),
-            data_source=annotation.get('data_source', 'all')
+            data_source=annotation.get('data_source', 'all'),
+            query_hash=annotation.get('query_hash', None),
+            path_url=annotation.get('path_url', None)
         )
 
         id = data.save()
@@ -54,6 +56,14 @@ class AnnotationStorageService():
     def get_user_annotation(annotation_id, user_id):
         data = Annotation.find_one({"_id": annotation_id, "user_id": user_id})
         return data
+
+    @staticmethod
+    def find_by_hash(query_hash):
+        data = Annotation.find({
+            "query_hash": query_hash,
+            "status": "COMPLETE"
+        }).sort('_id', -1).limit(1)
+        return data[0] if data else None
 
     @staticmethod
     def update(id, data):

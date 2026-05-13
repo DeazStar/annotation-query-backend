@@ -25,6 +25,7 @@ class Annotation(Schema):
     data_source = None
     species = None
     path_url = None
+    query_hash = None
 
     def __init__(self, **kwargs):
         self.schema = {
@@ -67,6 +68,10 @@ class Annotation(Schema):
                 "required": True
             },
             "path_url": Types.String,
+            "query_hash": {
+                "type": Types.String,
+                "required": False,
+            },
             "species": {
                 "type": Types.String,
                 "required": True,

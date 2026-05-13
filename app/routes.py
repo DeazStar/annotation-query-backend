@@ -18,9 +18,9 @@ from dotenv import load_dotenv
 from distutils.util import strtobool
 import datetime
 from app.lib import Graph, heuristic_sort
-from app.annotation_controller import handle_client_request, process_full_data, requery
+from app.annotation_controller import handle_client_request, process_full_data
 from app.constants import TaskStatus, Species, form_fields, ROLES
-from app.workers.task_handler import get_annotation_redis
+from app.workers.task_handler import get_annotation_redis, get_graph_file_path
 from app.persistence import AnnotationStorageService, UserStorageService, SharedAnnotationStorageService
 from nanoid import generate
 from app.lib.utils import convert_to_tsv
@@ -485,9 +485,18 @@ def process_query(current_user_id):
         response['node_count_by_label'] = meta_data['node_count_by_label']
         response['edge_count_by_label'] = meta_data['edge_count_by_label']
 
+        # Points to Compute hash and store globally
+        from app.lib.canonicalizer import Canonicalizer
+        query_hash = Canonicalizer.canonicalize(requests, species, data_source)
+        graph_data = {'nodes': response['nodes'], 'edges': response['edges']}
+        graph_file_path = get_graph_file_path(query_hash)
+        with open(graph_file_path, 'w') as file:
+            json.dump(graph_data, file)
+
         annotation = {"current_user_id": str(current_user_id),
                       "request": requests,
                       "query": result_query,
+                      "query_hash": query_hash,
                       "title": title,
                       "summary": summary,
                       "node_count": response['node_count'],
@@ -496,14 +505,17 @@ def process_query(current_user_id):
                       "node_count_by_label": response['node_count_by_label'],
                       "edge_count_by_label": response['edge_count_by_label'],
                       "answer": answer, "question": question,
-                      "status": TaskStatus.COMPLETE.value
+                      "status": TaskStatus.COMPLETE.value,
+                      "path_url": str(graph_file_path.resolve())
                       }
 
         annotation_id = AnnotationStorageService.save(annotation)
-        redis_client.setex(str(annotation_id), EXP, json.dumps({'task': 4,
-                                'graph': {'nodes': response['nodes'], 'edges': response['edges']}}))
-        response = {"annotation_id": str(
-            annotation_id), "question": question, "answer": answer}
+        
+        # Save to Global Redis Cache
+        redis_client.setex(f"query_hash:{query_hash}", EXP, json.dumps({
+                                'graph': graph_data}))
+        
+        response = {"annotation_id": str(annotation_id), "question": question, "answer": answer}
         formatted_response = json.dumps(response, indent=4)
         
         logging.info(json.dumps({"status": "success", "method": "POST",
@@ -740,11 +752,16 @@ def get_by_id(current_user_id, id):
             response_data["edge_count_by_label"] = edge_count_by_label
         response_data["status"] = status
 
-        cache = redis_client.get(str(annotation_id))
+        # Points annotation_id → query_hash → global result
+        query_hash = cursor.query_hash
+        if not query_hash:
+            logging.error(f"Annotation {annotation_id} missing query_hash — corrupted record")
+            return Response(json.dumps({"error": "Corrupted annotation record"}), mimetype='application/json', status=500)
+        cache = redis_client.get(f"query_hash:{query_hash}")
 
         if cache is not None:
             cache = json.loads(cache)
-            graph = cache['graph']
+            graph = cache.get('graph')
             if graph is not None:
                 response_data['nodes'] = graph['nodes']
                 response_data['edges'] = graph['edges']
@@ -753,16 +770,17 @@ def get_by_id(current_user_id, id):
 
         if status in [TaskStatus.PENDING.value, TaskStatus.COMPLETE.value]:
             if status == TaskStatus.COMPLETE.value:
-                if os.path.exists(file_path):
+                if file_path and os.path.exists(file_path):
                     # open the file and read the graph
                     with open(file_path, 'r') as file:
                         graph = json.load(file)
 
                     response_data['nodes'] = graph['nodes']
                     response_data['edges'] = graph['edges']
+                    redis_client.setex(f"query_hash:{query_hash}", EXP, json.dumps({'graph': graph}))
                 else:
                     response_data['status'] = TaskStatus.PENDING.value
-                    requery(annotation_id, query, json_request)
+                    AnnotationStorageService.update(annotation_id, {"status": TaskStatus.PENDING.value})
             formatted_response = json.dumps(response_data, indent=4)
             return Response(formatted_response, mimetype='application/json')
 
@@ -850,19 +868,31 @@ def process_by_id(current_user_id, id):
     json_request = cursor.request
     node_count_by_label = cursor.node_count_by_label
     edge_count_by_label = cursor.edge_count_by_label
+    file_path = cursor.path_url
 
     try:
         if question:
             response_data["question"] = question
 
-        cache = redis_client.get(str(id))
+        # points annotation_id → query_hash → global result
+        query_hash = cursor.query_hash
+        if not query_hash:
+            logging.error(f"Annotation {id} missing query_hash — corrupted record")
+            return Response(json.dumps({"error": "Corrupted annotation record"}), mimetype='application/json', status=500)
+        cache = redis_client.get(f"query_hash:{query_hash}")
 
         if cache is not None:
             cache = json.loads(cache)
-            graph = cache['graph']
+            graph = cache.get('graph')
             if graph is not None:
                 response_data['nodes'] = graph['nodes']
                 response_data['edges'] = graph['edges']
+        elif cursor.status == TaskStatus.COMPLETE.value and file_path and os.path.exists(file_path):
+            with open(file_path, 'r') as file:
+                graph = json.load(file)
+            response_data['nodes'] = graph['nodes']
+            response_data['edges'] = graph['edges']
+            redis_client.setex(f"query_hash:{query_hash}", EXP, json.dumps({'graph': graph}))
         else:
             # Run the query and parse the results
             result = db_instance.run_query(query)
@@ -1373,8 +1403,13 @@ def cell_component(current_user_id):
 
     try:
         # get the graph and filter out the protein
-        file_name = f'{annotation_id}.json'
-        path = Path(__file__).parent /".."/ "public" / "graph" / f"{file_name}"
+        annotation = AnnotationStorageService.get_user_annotation(annotation_id, current_user_id)
+        if annotation is None:
+            return jsonify('No value Found'), 404
+
+        path = annotation.path_url
+        if not path or not os.path.exists(path):
+            return jsonify('Graph file not found'), 404
 
         with open(path, 'r') as f:
             graph = json.load(f)
@@ -1578,12 +1613,14 @@ def cell_component(current_user_id):
 @app.route('/annotation/<id>/download-tsv', methods=['GET'])
 @token_required
 def download_csv(current_user_id, id):
-    cursor = cursor = storage_service.get_by_id(id)
+    cursor = AnnotationStorageService.get_user_annotation(id, current_user_id)
     
     if cursor is None:
         return jsonify('No value Found'), 404
 
     file_path = cursor.path_url
+    if not file_path or not os.path.exists(file_path):
+        return jsonify('Graph file not found'), 404
     
     try:
         graph = json.load(open(file_path))

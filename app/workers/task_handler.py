@@ -14,7 +14,12 @@ import traceback
 llm = app.config['llm_handler']
 EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
 
-def update_task(annotation_id, graph=None):
+def get_graph_file_path(query_hash):
+    graph_dir = Path(__file__).parent / ".." / ".." / "public" / "graph"
+    graph_dir.mkdir(parents=True, exist_ok=True)
+    return graph_dir / f"{query_hash}.json"
+
+def update_task(annotation_id, query_hash=None, graph=None):
     with app.config['annotation_lock']:
         status = TaskStatus.PENDING.value
         # Get the cached data (Handle case where cache is None)
@@ -22,42 +27,41 @@ def update_task(annotation_id, graph=None):
 
         cache = json.loads(cache) if cache else {'graph': None, 'status': status}
 
-        status = cache['status']
+        status = cache.get('status', TaskStatus.PENDING.value)
         # Merge graph updates
-        graph = graph if graph else cache['graph']
-        if status == TaskStatus.COMPLETE.value:
-            redis_client.setex(str(annotation_id), EXP, json.dumps({
-                'graph': graph, 'status': TaskStatus.COMPLETE.value
+        graph = graph if graph is not None else cache.get('graph')
+        
+        if status in [TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]:
+            redis_client.set(str(annotation_id), json.dumps({
+                'graph': graph, 'status': status
             }))
             AnnotationStorageService.update(annotation_id, {'status': status})
-            redis_client.delete(f"{annotation_id}_tasks")
-            return TaskStatus.COMPLETE.value
+            return status
 
         # Increment task count atomically and get the new count
         task_num = redis_client.incr(f"{annotation_id}_tasks")
 
-        if status in [TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]:
-            if task_num >= 4 and cache['status'] == TaskStatus.CANCELLED.value:
-                AnnotationStorageService.delete(annotation_id)
-                redis_client.delete(f"{annotation_id}_tasks")
-                redis_client.delete(str(annotation_id))
-                with app.config['annotation_lock']:
-                    annotation_threads = app.config['annotation_threads']
-                    del annotation_threads[str(annotation_id)]
-        else:
-            status = TaskStatus.COMPLETE.value if task_num >= 4 else TaskStatus.PENDING.value
-        if status in [TaskStatus.FAILED.value, TaskStatus.COMPLETE.value] and task_num >= 4:
+        if task_num >= 4:
+            status = TaskStatus.COMPLETE.value
+            # If we finished, save the result to BOTH the WebSocket cache (for the active user)
+            # and the Shared Global cache (for the deduplication pool)
+            if query_hash and graph is not None:
+                redis_client.setex(f"query_hash:{query_hash}", EXP, json.dumps({'graph': graph}))
+
             redis_client.setex(str(annotation_id), EXP, json.dumps({
-                'graph': graph, 'status': status
-            }))
-            AnnotationStorageService.update(annotation_id, {'status': status})
-            redis_client.delete(f"{annotation_id}_tasks")
-        elif status == TaskStatus.PENDING.value:
-            redis_client.set(str(annotation_id), json.dumps({
-                'graph': graph, 'status': status
+                'graph': graph, 'status': TaskStatus.COMPLETE.value
             }))
 
-        return status
+            AnnotationStorageService.update(annotation_id, {'status': TaskStatus.COMPLETE.value})
+            redis_client.delete(f"{annotation_id}_tasks")
+            return TaskStatus.COMPLETE.value
+
+        else:
+            # Still pending
+            redis_client.set(str(annotation_id), json.dumps({
+                'graph': graph, 'status': TaskStatus.PENDING.value
+            }))
+            return TaskStatus.PENDING.value
 
 def get_status(annotation_id):
     with app.config['annotation_lock']:
@@ -158,7 +162,7 @@ def generate_summary(annotation_id, request, all_status, summary=None):
                         'update': {'summary': 'Graph too big, could not summarize'}},
                       to=str(annotation_id))
 
-def generate_result(query_code, annotation_id, requests, result_status, species, status=None,):
+def generate_result(query_code, annotation_id, requests, result_status, species, query_hash):
 
     try:
         annotation_threads = app.config['annotation_threads']
@@ -185,17 +189,14 @@ def generate_result(query_code, annotation_id, requests, result_status, species,
         else:
             grouped_graph = graph.group_graph(response);
 
-        file_path = Path(__file__).parent /".."/ ".."/ "public" / "graph" / f"{annotation_id}.json"
+        file_path = get_graph_file_path(query_hash)
 
         with open(file_path, 'w') as file:
             json.dump(grouped_graph, file)
 
         AnnotationStorageService.update(annotation_id, {"path_url": str(file_path.resolve())})
 
-        if status:
-            set_status(annotation_id, status);
-
-        status = update_task(annotation_id, {
+        status = update_task(annotation_id, query_hash, {
             'nodes': grouped_graph['nodes'],
             'edges': grouped_graph['edges']
         })
@@ -209,7 +210,7 @@ def generate_result(query_code, annotation_id, requests, result_status, species,
         return grouped_graph
     except ThreadStopException as e:
         set_status(annotation_id, TaskStatus.CANCELLED.value)
-        update_task(annotation_id, {
+        update_task(annotation_id, query_hash, {
             "nodes": [],
             "edges": []
         })
@@ -536,7 +537,7 @@ def generate_label_count(
         logging.error("Error generating result graph %s", e)
     except Exception as e:
         set_status(annotation_id, "FAILED")
-        update_task(annotation_id)
+        update_task(annotation_id, query_hash)
 
         update = generate_empty_lable_count(requests)
         AnnotationStorageService.update(
@@ -554,6 +555,7 @@ def generate_label_count(
 
 def start_thread(annotation_id, args):
     all_status = args['all_status']
+    query_hash = args.get('query_hash')
     find_query = args['query'][0]
     total_count_query = args['query'][1]
     label_count_query = args['query'][2]
@@ -567,7 +569,7 @@ def start_thread(annotation_id, args):
 
     def send_annotation():
         try:
-            generate_result(find_query, annotation_id, request, all_status['result_done'], species)
+            generate_result(find_query, annotation_id, request, query_hash, all_status['result_done'], species)
         except Exception as e:
             logging.error("Error generating result graph %s", e)
 

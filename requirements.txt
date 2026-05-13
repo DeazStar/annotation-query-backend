@@ -26,4 +26,4 @@ neo4j==5.20.0
 axiom-py==0.10.0
 pandas==2.2.3
 requests==2.32.5
-sentry-sdk==1.54.0
+sentry-sdk==2.58.0

@@ -32,4 +32,31 @@ class Canonicalizer:
                 "properties": node.get('properties', {})
             })
             
- 
+        # Rewrite predicates using new IDs
+        canonical_predicates = []
+        for p in predicates:
+            canonical_predicates.append({
+                "source": id_mapping.get(p.get('source'), p.get('source')),
+                "target": id_mapping.get(p.get('target'), p.get('target')),
+                "type": p.get('type', ''),
+                "properties": p.get('properties', {})
+            })
+            
+        # Sort predicates to ensure stable order
+        def predicate_sort_key(p):
+            props = json.dumps(p.get('properties', {}), sort_keys=True)
+            return (p.get('source'), p.get('target'), p.get('type'), props)
+            
+        canonical_predicates.sort(key=predicate_sort_key)
+        
+        # Final canonical object
+        canonical_query = {
+            "species": species,
+            "data_source": data_source,
+            "nodes": canonical_nodes,
+            "predicates": canonical_predicates
+        }
+        
+        # Stable JSON string and Hashing
+        canonical_str = json.dumps(canonical_query, sort_keys=True)
+        return hashlib.sha256(canonical_str.encode('utf-8')).hexdigest()

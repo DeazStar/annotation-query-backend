@@ -19,7 +19,7 @@ from distutils.util import strtobool
 import datetime
 from app.lib import Graph, heuristic_sort
 from app.annotation_controller import handle_client_request, process_full_data, requery
-from app.constants import TaskStatus, Species,form_fields, ROLES
+from app.constants import TaskStatus, Species, form_fields, ROLES
 from app.workers.task_handler import get_annotation_redis
 from app.persistence import AnnotationStorageService, UserStorageService, SharedAnnotationStorageService
 from nanoid import generate

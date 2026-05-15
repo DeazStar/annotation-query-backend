@@ -9,3 +9,8 @@ public
 logs/
 Data/
 elastic-start-local
+
+# C++ Build Artifacts
+build/
+*.pyd
+*.so

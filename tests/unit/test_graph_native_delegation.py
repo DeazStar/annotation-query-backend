@@ -1,4 +1,5 @@
 from app.lib import graph as graph_module
+import copy
 
 
 class NativeStub:
@@ -23,9 +24,7 @@ def _sample_graph():
 
 
 def test_graph_uses_python_when_native_disabled(monkeypatch):
-    monkeypatch.setattr(graph_module, "_graph_native", NativeStub)
-    monkeypatch.setenv("GRAPH_NATIVE_ENABLED", "false")
-    monkeypatch.setenv("GRAPH_NATIVE_SHADOW", "false")
+    monkeypatch.setattr(graph_module, "graph_native", None)
 
     graph = graph_module.Graph()
     result = graph.group_node_only(_sample_graph(), {"nodes": [{"type": "protein"}]})
@@ -33,12 +32,8 @@ def test_graph_uses_python_when_native_disabled(monkeypatch):
 
 
 def test_graph_uses_native_when_enabled(monkeypatch):
-    monkeypatch.setattr(graph_module, "_graph_native", NativeStub)
-    monkeypatch.setenv("GRAPH_NATIVE_ENABLED", "true")
-    monkeypatch.setenv("GRAPH_NATIVE_SHADOW", "false")
+    monkeypatch.setattr(graph_module, "graph_native", NativeStub)
 
     graph = graph_module.Graph()
     result = graph.group_graph(_sample_graph())
     assert result["nodes"][0]["data"]["type"] == "native"
-
-

@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from app.lib.graph_legacy import PythonGraphOps
+from app.lib import graph as graph_module
 
 
 graph_native = pytest.importorskip("graph_native")
@@ -80,18 +80,22 @@ def _sample_graph():
     }
 
 
-def test_group_graph_parity():
+def test_group_graph_parity(monkeypatch):
+    monkeypatch.setattr(graph_module, "graph_native", None)
     graph = _sample_graph()
-    py_ops = PythonGraphOps()
+    py_ops = graph_module.Graph()
     python_result = py_ops.group_graph(copy.deepcopy(graph))
+
     native_result = graph_native.group_graph(copy.deepcopy(graph))
     assert _normalize(native_result) == _normalize(python_result)
 
 
-def test_group_node_only_parity():
+def test_group_node_only_parity(monkeypatch):
+    monkeypatch.setattr(graph_module, "graph_native", None)
     graph = {"nodes": _sample_graph()["nodes"], "edges": []}
     request = {"nodes": [{"type": "protein"}, {"type": "gene"}]}
-    py_ops = PythonGraphOps()
+    py_ops = graph_module.Graph()
     python_result = py_ops.group_node_only(copy.deepcopy(graph), copy.deepcopy(request))
+
     native_result = graph_native.group_node_only(copy.deepcopy(graph), copy.deepcopy(request))
     assert _normalize(native_result) == _normalize(python_result)

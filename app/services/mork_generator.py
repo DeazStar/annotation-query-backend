@@ -9,19 +9,40 @@ from dotenv import load_dotenv
 import time
 import datetime
 
+from resilience.circuit_breaker import CircuitBreaker
+from resilience.exceptions import classify_database_exception
+from resilience.executor import execute_with_resilience
+from resilience.retry_policy import get_retry_policy
+
 load_dotenv()
 
 class MorkQueryGenerator:
     def __init__(self, dataset_path):
+        cb_threshold = int(os.getenv("MORK_CB_THRESHOLD", os.getenv("NEO4J_CB_THRESHOLD", "3")))
+        cb_recovery = float(os.getenv("MORK_CB_RECOVERY_TIMEOUT", os.getenv("NEO4J_CB_RECOVERY_TIMEOUT", "30")))
+        self._circuit_breaker = CircuitBreaker(
+            threshold=cb_threshold, recovery_timeout=cb_recovery
+        )
+        self._retry_policy = get_retry_policy()
         self.server = self.connect()
         self.metta = MeTTa()
         # self.clear_space()
         # self.load_dataset(dataset_path)
 
+    def _init_driver_with_cb(self):
+        circuit_breaker = self._circuit_breaker
+        retry_no_jitter = get_retry_policy(with_jitter=False)
+        def _operations():
+            try:
+                mork_url = os.getenv('MORK_URL')
+                server = ManagedMORK.connect(url=mork_url)
+                return server
+            except Exception as exc:
+                raise classify_database_exception(exc,backend='mork') from exc
+        return execute_with_resilience(_operations, circuit_breaker=circuit_breaker,retry_policy=retry_no_jitter)
     def connect(self):
-        mork_url = os.getenv('MORK_URL')
-        server = ManagedMORK.connect(url=mork_url)
-        return server
+        return self._init_driver_with_cb()
+    
 
     def clear_space(self):
         self.server.clear()
@@ -52,7 +73,7 @@ class MorkQueryGenerator:
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def run_query(self, query, stop_event=None, species='human'):
+    def _run_query_once(self, query, stop_event=None, species='human'):
         with app.config["annotation_lock"]:
             start_time = time.time()
             timestamp = datetime.datetime.utcnow().isoformat()
@@ -63,11 +84,9 @@ class MorkQueryGenerator:
                 result = annotation.download("(tmp $x)", "($x)")
                 with annotation.work_at("tmp") as tmp:
                     tmp.clear()
-            
+
             metta_result = self.metta.parse_all(result.data)
-            # Success log
-            duration = (time.time() - start_time) * 1000 # in ms
-            
+            duration = (time.time() - start_time) * 1000
             perf_logger.info(
                 "Query executed",
                 extra={
@@ -75,11 +94,24 @@ class MorkQueryGenerator:
                     "timestamp": timestamp,
                     "duration_ms": duration,
                     "species": species,
-                    "status": "success"
-                }
+                    "status": "success",
+                },
             )
             print("RES: ", metta_result, flush=True)
             return [metta_result]
+
+    def run_query(self, query, stop_event=None, species='human'):
+        def _operation():
+            try:
+                return self._run_query_once(query, stop_event, species)
+            except Exception as exc:
+                raise classify_database_exception(exc, backend="mork") from exc
+
+        return execute_with_resilience(
+            _operation,
+            self._circuit_breaker,
+            retry_policy=self._retry_policy,
+        )
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration

@@ -7,9 +7,27 @@ from neo4j import GraphDatabase
 import glob
 import os
 from neo4j.graph import Node, Relationship
-from app.error import ThreadStopException
+from app.error import ThreadStopException, is_neo4j_transient
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
+import pybreaker
 
 load_dotenv()
+
+# Resilience Configuration
+NEO4J_RETRY_ATTEMPTS = int(os.getenv("NEO4J_RETRY_ATTEMPTS", 5))
+NEO4J_RETRY_MIN_WAIT = int(os.getenv("NEO4J_RETRY_MIN_WAIT", 1))
+NEO4J_RETRY_MAX_WAIT = int(os.getenv("NEO4J_RETRY_MAX_WAIT", 10))
+NEO4J_BREAKER_FAIL_MAX = int(os.getenv("NEO4J_BREAKER_FAIL_MAX", 5))
+NEO4J_BREAKER_RESET_TIMEOUT = int(os.getenv("NEO4J_BREAKER_RESET_TIMEOUT", 30))
+
+def exclude_non_transient(e):
+    return not is_neo4j_transient(e)
+
+db_breaker = pybreaker.CircuitBreaker(
+    fail_max=NEO4J_BREAKER_FAIL_MAX, 
+    reset_timeout=NEO4J_BREAKER_RESET_TIMEOUT,
+    exclude=[exclude_non_transient]
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +84,14 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         logger.info(
             f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
+    @db_breaker
+    @retry(
+        stop=stop_after_attempt(NEO4J_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=NEO4J_RETRY_MIN_WAIT, max=NEO4J_RETRY_MAX_WAIT),
+        retry=retry_if_exception(is_neo4j_transient),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True
+    )
     def run_query(self, query_code, stop_event=None,  species="human"):
         results = []
         driver = self.human_driver if species == "human" else self.fly_driver

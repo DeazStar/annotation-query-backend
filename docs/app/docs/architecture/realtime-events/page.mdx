@@ -1,0 +1,84 @@
+---
+order: 4
+title: Realtime Events
+description: How Socket.IO and Redis pub/sub deliver realtime updates.
+---
+
+# Realtime Events
+
+## Architecture
+
+```
+┌──────────────┐    Redis pub/sub     ┌──────────────┐
+│  Celery      │  ────────────────▶   │  FastAPI      │
+│  Worker      │  socket_event        │  Lifespan     │
+│              │  channel             │  Listener     │
+└──────────────┘                      └──────┬───────┘
+                                             │
+                                     sio.emit('update', ...)
+                                             │
+                                             ▼
+                                      ┌──────────────┐
+                                      │  Socket.IO    │
+                                      │  Client       │
+                                      │  (Browser)    │
+                                      └──────────────┘
+```
+
+## Why this exists
+
+Long-running async tasks need to report progress, status changes, and results to the UI. HTTP polling is inefficient — Socket.IO provides a persistent bidirectional channel for streaming events.
+
+## Where it lives
+
+**Socket.IO server:** `app/socketio/server.py` — creates the `sio` async Server instance.  
+**Event handlers:** `app/events/socket_event.py` — Socket.IO event callbacks.  
+**Redis listener:** `app/main.py` (inside the `lifespan` context manager) — async Redis pub-sub subscriber.  
+**Worker publishing:** `app/workers/task_handler.py` — tasks publish to Redis from the worker process.
+
+## Event flow
+
+1. **Connection:** The frontend opens a Socket.IO connection to `/socket.io/` on the same host. The `socket_token_required` JWT auth is enforced (via query parameter or header).
+
+2. **Room join:** The frontend emits a `join` event with the `annotation_id` (the task ID). The server joins the socket to a room named after the ID.
+
+3. **Worker publishing:** During execution, Celery tasks publish JSON messages to Redis channel `socket_event`:
+   ```python
+   redis_client.publish('socket_event', json.dumps({
+       'annotation_id': task_id,
+       'status': 'PROCESSING',
+       'progress': 0.75,
+       'message': 'Processing batch 3/4...'
+   }))
+   ```
+
+4. **Bridge forwarding:** The FastAPI lifespan listener (asyncio task) receives the Redis pub-sub message and calls `sio.emit('update', payload, room=room)`.
+
+5. **Client receipt:** The browser's Socket.IO client receives the `update` event and updates the UI (progress bar, status badge, result preview).
+
+## Events emitted to clients
+
+| Event name | Payload | Trigger |
+|-----------|---------|---------|
+| `update` | `{ annotation_id, status, progress?, message?, result? }` | Any task state change |
+
+## Key files
+
+| File | Purpose |
+|------|---------|
+| `app/socketio/server.py` | Creates the async Socket.IO server |
+| `app/events/socket_event.py` | Socket.IO event handlers (connect, join, etc.) |
+| `app/main.py` (lifespan) | Redis → Socket.IO bridge |
+| `app/workers/task_handler.py` | Worker-side Redis publishing |
+
+## Failure modes
+
+- **Redis down at startup:** The lifespan handler fails to connect — the bridge won't start. Tasks still execute but no realtime updates reach the frontend.
+- **Socket.IO connection lost:** The browser reconnects automatically. The client must re-join rooms after reconnect.
+- **Redis pub/sub message loss:** If the FastAPI process restarts while the listener is down, messages published during the gap are lost (Redis pub/sub is fire-and-forget).
+
+## What to read next
+
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Redis State Model](/docs/workers/redis-state-model)
+- [Celery Overview](/docs/workers/celery-overview)

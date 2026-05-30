@@ -1,0 +1,57 @@
+---
+order: 5
+title: "ADR: MORK CLI Backend"
+description: Adopting MORK CLI as the production-recommended graph query backend.
+---
+
+# ADR: MORK CLI Backend
+
+**Status:** Implemented
+
+## Context
+
+The original graph backend used Neo4j with Cypher queries. As the biomedical knowledge graph grew to 10M+ nodes and 50M+ edges, query performance degraded. Two alternative engines were evaluated: MeTTa (hyperon-based) and MORK (compiled C++ biomedical graph engine).
+
+## Decision
+
+Adopt MORK CLI as the recommended production backend, while maintaining Cypher and MeTTa as supported alternatives.
+
+### Architecture
+
+- MORK runs as a compiled C++ binary inside a Docker container
+- The `MorkQueryGenerator` (`app/services/mork_cli_generator.py`) shells out to the CLI via Docker-in-Docker
+- Data is preprocessed into MORK format (see `MORK_CLI_README.md`)
+- The backend is selected via `config.yaml`: `database.type: mork_cli`
+
+### Key files
+
+- `app/services/mork_cli_generator.py` — `MorkQueryGenerator` class
+- `MORK_CLI_README.md` — build and data preparation guide
+- `docker-compose.yml` — Docker socket mount for Docker-in-Docker
+
+## Consequences
+
+**Positive:**
+- Significant performance improvement over Neo4j for large graphs
+- Compiled C++ binary handles graphs too large for MeTTa's in-memory approach
+- Docker isolation means no native binary installation required
+- Same unified API regardless of backend
+
+**Negative:**
+- Requires Docker-in-Docker (Docker socket mounted into the container)
+- Additional operational complexity (MORK container must be running and healthy)
+- Data preprocessing is required (not a drop-in replacement for Neo4j data)
+- Debugging query errors is harder (via CLI output parsing rather than a DB console)
+
+## Alternatives considered
+
+1. **Stay on Neo4j** — performance degrades with graph size; scaling requires Neo4j clustering
+2. **MeTTa hyperon** — too slow for production use; experimental library
+3. **Amazon Neptune** — cloud dependency; higher cost; more complex operations
+4. **Custom C++ engine** — too much engineering effort; MORK already exists
+
+## What to read next
+
+- [MORK CLI Backend](/docs/data-sources/mork-cli-backend)
+- [Backend Selection](/docs/architecture/backend-selection)
+- [Docker and Compose](/docs/operations/docker-and-compose)

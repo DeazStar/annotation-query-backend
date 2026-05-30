@@ -1,0 +1,81 @@
+---
+order: 4
+title: WebSocket and Socket.IO
+description: Realtime communication channels and their use cases.
+---
+
+# WebSocket and Socket.IO
+
+## Why both exist
+
+The system provides two realtime channels:
+
+- **Raw WebSocket** at `/ws` — basic echo endpoint for testing and simple use cases.
+- **Socket.IO** at `/socket.io/` — production-grade realtime event bus used for task progress streaming.
+
+Socket.IO is the primary realtime channel. The raw WebSocket is a minimal echo endpoint defined in the API router.
+
+## Socket.IO server
+
+**File:** `app/socketio/server.py`
+
+```python
+import socketio
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
+```
+
+The server is mounted as an ASGI app alongside FastAPI:
+
+```python
+socket_app = socketio.ASGIApp(sio, app)
+```
+
+Uvicorn serves `socket_app` as the top-level ASGI application, so both HTTP and Socket.IO traffic flow through the same port.
+
+## Socket.IO events
+
+### Client → Server
+
+| Event | Payload | Action |
+|-------|---------|--------|
+| `join` | `{ "annotation_id": "..." }` | Join the room for a task |
+| Authenticated | Via `token` query param | `socket_token_required` decorator validates JWT |
+
+### Server → Client
+
+| Event | Payload | When |
+|-------|---------|------|
+| `update` | `{ annotation_id, status, progress?, message?, result? }` | Any task state change |
+
+## Event flow
+
+1. Frontend connects to `/socket.io/` with JWT as `?token=...`.
+2. Frontend emits `join` with the annotation/task ID.
+3. Server adds the socket to a room named after the ID.
+4. When a Celery worker publishes progress to Redis `socket_event`, the lifespan listener forwards it to the room:
+   ```python
+   await sio.emit('update', payload, room=room)
+   ```
+5. All clients in that room receive the event.
+
+## Where it lives
+
+| Component | File |
+|-----------|------|
+| Socket.IO server instance | `app/socketio/server.py` |
+| Event handlers | `app/events/socket_event.py` |
+| Redis bridge (lifespan) | `app/main.py` — `lifespan` function |
+| Worker publishing | `app/workers/task_handler.py` |
+| Auth decorator | `app/lib/auth.py` — `socket_token_required` |
+
+## Failure modes
+
+- **Socket.IO connection drops:** The client reconnects automatically, but must re-join rooms.
+- **Redis bridge down:** If the lifespan listener fails to start, no realtime updates reach clients. The server starts but without the bridge.
+- **Worker crash mid-task:** The last published status is stale. The frontend should implement a timeout fallback.
+
+## What to read next
+
+- [Realtime Events](/docs/architecture/realtime-events)
+- [Redis State Model](/docs/workers/redis-state-model)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)

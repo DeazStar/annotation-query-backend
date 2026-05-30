@@ -1,0 +1,47 @@
+---
+order: 1
+title: How to Update Docs
+description: Process for keeping the engineering handbook accurate.
+---
+
+# How to Update Docs
+
+## When to update docs
+
+- **When you add or change an API endpoint** — update the corresponding endpoint page
+- **When you add or change a configuration option** — update `environment-and-secrets` or `configuration-model`
+- **When you change the architecture** — update `system-overview`, `request-lifecycle`, or relevant ADR
+- **When you fix a bug or add error handling** — update `failure-modes`
+- **When you add a dependency** — update `overview`, `external-dependencies`
+
+## How to make a change
+
+1. Find the relevant `.mdx` file in `docs/app/docs/`
+2. Edit the frontmatter (title, description, order) if needed
+3. Update the content — the docs build automatically from MDX
+4. Verify locally:
+   ```bash
+   cd docs
+   pnpm dev
+   ```
+   Open `http://localhost:3000/docs` to preview
+5. Commit both code and docs changes in the same PR
+
+## Docs review checklist
+
+- [ ] Does the change reflect current runtime behavior?
+- [ ] Are file paths and function names accurate?
+- [ ] Are new environment variables documented?
+- [ ] Are failure modes updated if the change introduces new edge cases?
+- [ ] Does the change affect any ADRs?
+
+## Principles
+
+- **Document the repo as it is.** Call out stale surfaces explicitly rather than silently fixing them.
+- **Code is truth.** If the README and the implementation disagree, the implementation wins.
+- **Docs rot quickly.** Small updates on every PR are better than a big rewrite once a year.
+
+## What to read next
+
+- [Change Checklist](/docs/contributing/change-checklist)
+- [Code Reading Guide](/docs/contributing/code-reading-guide)

@@ -1,0 +1,52 @@
+---
+order: 1
+title: Test Strategy
+description: Principles and scope of the test suite.
+---
+
+# Test Strategy
+
+## Testing principles
+
+1. **Test against the canonical codebase.** Tests should validate current runtime behavior, not stale README descriptions.
+2. **Isolation where possible.** Unit tests mock external services (Neo4j, Redis, MongoDB). Integration tests use real or containerized dependencies.
+3. **Coverage priorities:** Core query logic > API endpoints > persistence > schema management.
+4. **CI integration.** Tests run in CI (GitHub Actions) on every push to main and pull requests.
+
+## Test types
+
+### Unit tests (`tests/unit/`)
+
+Test individual functions and classes in isolation. Mock external dependencies.
+
+**Focus areas:**
+- Query generator logic (Cypher, MeTTa, MORK)
+- Query canonicalization and fingerprinting
+- Utility functions (CSV/TSV/Excel conversion)
+- Auth token validation
+- Error handling
+
+### Integration tests (`tests/integration/`)
+
+Test end-to-end flows with real or containerized dependencies.
+
+**Focus areas:**
+- API endpoint behavior (status codes, response format, auth)
+- Celery task submission and completion
+- Redis state management
+- MongoDB CRUD through storage services
+- Schema endpoint responses
+
+## Test fixtures (`tests/conftest.py`)
+
+Shared fixtures include:
+
+- `client()` — FastAPI `TestClient` for endpoint testing
+- `node_list()` — sample node types for schema tests
+- `schema()` — pre-loaded `SchemaManager` for schema tests
+- `suppress_logging()` — silences dependency loggers during test runs
+
+## What to read next
+
+- [Test Layout](/docs/testing/test-layout)
+- [Local CI Workflow](/docs/testing/local-ci-workflow)

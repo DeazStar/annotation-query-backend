@@ -1,0 +1,67 @@
+---
+order: 5
+title: Graph Assets and Data Dirs
+description: Data files and directories used by the graph backends.
+---
+
+# Graph Assets and Data Dirs
+
+## Data directories
+
+Each backend expects data files in a specific directory, configurable in `config/config.yaml`:
+
+| Backend | Default directory | Contents |
+|---------|-------------------|----------|
+| Cypher | `cypher_data/` | Neo4j-compatible import files |
+| MeTTa | `metta_data/` or `./Data` | MeTTa format graph files |
+| MORK CLI | Host mount (e.g. `/mnt/hdd_1/...`) | Preprocessed MORK binary data |
+
+## Metadata files
+
+### `Data/graph_info.json`
+
+Loaded at startup and served by the `/kg-info` endpoint. Contains the overall graph structure, node/edge counts, and schema metadata.
+
+### `Data/count_info.json`
+
+Loaded into `app.constants.GRAPH_INFO_PATH` and used for result formatting and display. Contains precomputed counts for rendering in the UI.
+
+## How data is organized
+
+Biomedical data is organized by species and data source:
+
+```
+Data/
+├── gaf/           # GO annotation files
+├── gencode/       # GENCODE gene/transcript annotations
+├── onotology/     # Ontology definitions (GO, Uberon, etc.)
+├── reactome/      # Reactome pathway data
+├── uniprot/       # UniProt protein data
+├── graph_info.json
+└── count_info.json
+```
+
+In production, the actual graph data directories (`cypher_data/`, `metta_data/`, MORK data dir) are typically located on a mounted volume (e.g., `/mnt/hdd_1/biocypher-kg/output/`) rather than in the repo, because they are large (hundreds of GB).
+
+## Docker volume mounts
+
+In `docker-compose.yml`:
+
+```yaml
+volumes:
+  - .:/app
+  - /mnt/hdd_1:/mnt/hdd_1:rw
+  - /dev/shm:/dev/shm
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+- `.:/app` — mount the repo for code hot-reload
+- `/mnt/hdd_1` — large graph data (production data directory)
+- `/dev/shm` — shared memory for IPC
+- `/var/run/docker.sock` — Docker-in-Docker for MORK CLI
+
+## What to read next
+
+- [Schema Management](/docs/data-sources/schema-management)
+- [Backend Selection](/docs/architecture/backend-selection)
+- [Docker and Compose](/docs/operations/docker-and-compose)

@@ -1,0 +1,65 @@
+---
+order: 4
+title: Redis State Model
+description: How Redis is used for task state, pub-sub events, caching, and Celery broker/backend.
+---
+
+# Redis State Model
+
+## Redis databases
+
+| DB | Purpose | Managed by |
+|----|---------|-----------|
+| 0 | Application state + cache + pub-sub | App code + `annotation:*` keys |
+| 1 | Celery broker | Celery (internal) |
+| 0 | Celery result backend | Celery (internal) |
+
+Note: DB 0 serves dual purpose — both application state and Celery results. The configuration in `celery_app.py` uses DB 0 for results and DB 1 for the broker.
+
+## Key patterns
+
+| Pattern | Example | Purpose |
+|---------|---------|---------|
+| `annotation:<id>:status` | `annotation:abc123:status` | Task status JSON |
+| `annotation:<id>:cancel` | `annotation:abc123:cancel` | Cancel signal (exists = cancelled) |
+| `annotation:<id>:result` | `annotation:abc123:result` | Cached query result (optional) |
+| `socket_event` | — | Pub-sub channel for realtime events |
+
+## Pub-sub channel: `socket_event`
+
+This is the single Redis pub-sub channel used for the entire realtime update system.
+
+**Publishers:** Celery workers (`app/workers/task_handler.py`)  
+**Subscriber:** FastAPI lifespan listener (`app/main.py`)
+
+Messages are JSON-encoded payloads with at minimum an `annotation_id` and `status` field.
+
+## Caching
+
+Query results can be cached in Redis using a query fingerprint as the key. The fingerprint is computed by `app/lib/query_canonical.py` and normalizes query parameters to detect repeated queries.
+
+```python
+fingerprint = canonicalize_query(query_params)
+cache_key = f"query_cache:{fingerprint}"
+cached = redis_client.get(cache_key)
+if cached:
+    return json.loads(cached)
+```
+
+Cache TTL is `REDIS_EXPIRATION` (default 3600s).
+
+## Expiration
+
+All application-managed Redis keys use `SETEX` with `REDIS_EXPIRATION`. This prevents stale state from accumulating. The Celery broker and result backend keys may have different retention policies managed by Celery.
+
+## Failure modes
+
+- **Redis becomes unreachable mid-operation:** Both Celery and the app will fail. The app should crash-loop until Redis is restored.
+- **Pub-sub message loss:** Messages published when no subscriber is connected are silently dropped. This is acceptable for progress updates (best-effort delivery).
+- **Key eviction:** If Redis runs out of memory, keys may be evicted before TTL expiry (depending on eviction policy). Set `maxmemory-policy` to `allkeys-lru` or `volatile-lru`.
+
+## What to read next
+
+- [Realtime Events](/docs/architecture/realtime-events)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Caching and Expiration](/docs/persistence/caching-and-expiration)

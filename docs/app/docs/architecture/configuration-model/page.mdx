@@ -1,0 +1,86 @@
+---
+order: 6
+title: Configuration Model
+description: How the system loads and merges configuration from YAML files and environment variables.
+---
+
+# Configuration Model
+
+## Where configuration comes from
+
+The system reads configuration from two sources:
+
+1. **Environment variables** (`.env` file) — secrets, URIs, and operational parameters.
+2. **YAML config files** (`config/config.yaml`) — backend selection, data paths, schema definitions.
+
+## Loading order (`app/core/config.py`)
+
+The `Settings` class (Pydantic v2 `BaseSettings`) merges both sources:
+
+1. Default values from the class definition.
+2. Overrides from `.env` file (loaded by `pydantic-settings`).
+3. The `DATABASE_TYPE` field uses a custom `@field_validator` that reads `config/config.yaml` at startup and parses the `database` section.
+
+```python
+# app/core/config.py (simplified)
+class Settings(BaseSettings):
+    API_V1_STR: str = "/api/v1"
+    REDIS_URL: str = "redis://redis:6379/0"
+    DATABASE_TYPE: dict = {}
+    JWT_SECRET: Optional[str] = None
+
+    @field_validator("DATABASE_TYPE", mode="before")
+    @classmethod
+    def load_db_type_from_yaml(cls, v):
+        config_path = "config/config.yaml"
+        if os.path.exists(config_path):
+            with open(config_path) as f:
+                full_yaml = yaml.safe_load(f)
+                if full_yaml and "database" in full_yaml:
+                    return full_yaml["database"]
+        return v
+```
+
+## What `config.yaml` controls
+
+```yaml
+database:
+  type: mork_cli           # Active backend: cypher, metta, or mork_cli
+  human:
+    data_dir: /path/to/data
+    act_file: human_v6.act
+    graph_info_path: ./Data/graph_info.json
+```
+
+## Schema configuration
+
+The `SchemaManager` loads schema definitions from multiple YAML files:
+
+- `config/schema_config.yaml` — top-level schema mapping
+- `config/biocypher_config.yaml` — BioCypher pipeline settings
+- `config/schema/` — individual data source schema definition files
+- `config/fly_base_schema/` — fly-specific schema configs
+
+## Runtime constants (`app/constants.py`)
+
+Some operational parameters are hardcoded constants:
+
+```python
+QUERY_MAX_NODES = 200_000       # Hard cap on nodes returned per query
+BATCH_MAX_TYPE_SIZE = 500_000   # Types exceeding this → per-node only
+BATCH_NODE_THRESHOLD = 50       # Results ≥ this many nodes use batch
+```
+
+## Redis expiration
+
+Task state keys in Redis automatically expire after `REDIS_EXPIRATION` seconds (default 3600, configurable via env).
+
+## Failing open
+
+If `config.yaml` is missing or malformed, the `Settings` validator catches the exception gracefully and returns the fallback value. The system will start but may behave unexpectedly if the backend type is wrong.
+
+## What to read next
+
+- [Environment and Secrets](/docs/getting-started/environment-and-secrets)
+- [Backend Selection](/docs/architecture/backend-selection)
+- [Schema Management](/docs/data-sources/schema-management)

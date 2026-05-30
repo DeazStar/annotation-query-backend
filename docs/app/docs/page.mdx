@@ -1,0 +1,30 @@
+---
+order: 1
+title: Handbook Home
+description: The starting point for the annotation-query-backend engineering handbook.
+icon: rocket
+---
+
+# Annotation Query Backend
+
+This handbook documents the Rejuve Bio annotation-query-backend as an engineering system.
+
+## What this site is for
+
+- Give new contributors a fast path into the codebase.
+- Capture architecture and runtime decisions that are easy to lose over time.
+- Provide one internal place for setup, system behavior, and reference material.
+
+## Source of truth
+
+The handbook documents the canonical upstream repository at `rejuve-bio/annotation-query-backend` (main branch). Current runtime behavior is the source of truth. Where README text or comments drift from the implementation, the code wins.
+
+The current runtime is **FastAPI + Celery + Redis + MongoDB + Socket.IO**. Some README/setup text still references Flask-era commands or assumptions — canonical behavior should be inferred from `app/main.py`, `app/workers/*`, and `app/api/*`.
+
+## What to read first
+
+- [Overview](/docs/getting-started/overview) — what this system is and why it exists
+- [Project Map](/docs/getting-started/project-map) — directory structure at a glance
+- [System Overview](/docs/architecture/system-overview) — high-level architecture
+- [Request Lifecycle](/docs/architecture/request-lifecycle) — how a query flows through the stack
+- [Local Development](/docs/getting-started/local-development) — get running locally

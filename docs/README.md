@@ -1,7 +1,7 @@
 # Annotation Query Backend Docs
 
 This directory contains the internal engineering handbook for
-`rejuve-bio/annotation-query-backend`, built with Farming Labs on Next.js.
+`rejuve-bio/annotation-query-backend`, built on Next.js.
 
 ## Getting started
 

@@ -228,7 +228,6 @@ export default function Home() {
             textTransform: "uppercase",
           }}
         >
-          <span>Built with Farming Labs docs on Next.js</span>
           <Link
             href="/docs"
             style={{

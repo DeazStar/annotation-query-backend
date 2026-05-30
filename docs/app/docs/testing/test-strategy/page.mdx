@@ -8,7 +8,7 @@ description: Principles and scope of the test suite.
 
 ## Testing principles
 
-1. **Test against the canonical codebase.** Tests should validate current runtime behavior, not stale README descriptions.
+1. **Test against the codebase.** Tests should validate current runtime behavior, not stale README descriptions.
 2. **Isolation where possible.** Unit tests mock external services (Neo4j, Redis, MongoDB). Integration tests use real or containerized dependencies.
 3. **Coverage priorities:** Core query logic > API endpoints > persistence > schema management.
 4. **CI integration.** Tests run in CI (GitHub Actions) on every push to main and pull requests.

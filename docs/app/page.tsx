@@ -10,7 +10,7 @@ const includedItems = [
 const summaryCards = [
   ["Architecture", "System topology, request flow, and execution boundaries."],
   ["Docs", "A maintained handbook route at /docs with MDX content and sidebar navigation."],
-  ["Reference", "Start with the canonical upstream repo and document current behavior from code."],
+  ["Reference", "Start with the upstream repo and document current behavior from code."],
 ] as const;
 
 export default function Home() {

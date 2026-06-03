@@ -19,6 +19,10 @@ networkx==3.4.2
 Flask-SocketIO==5.5.1
 flask-redis==0.4.0
 nanoid==2.0.0
-networkx==3.4.2
 elasticsearch==9.0.1
 pybind11>=2.10.0
+neo4j==5.28.0
+axiom-py==0.10.0
+sentry-sdk==2.58.0
+pymongo==4.10.1
+requests==2.32.3

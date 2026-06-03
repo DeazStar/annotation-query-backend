@@ -1,13 +1,19 @@
 from typing import List
 import logging
+import os
+import glob
+
 from dotenv import load_dotenv
 import neo4j
-from app.services.query_generator_interface import QueryGeneratorInterface
 from neo4j import GraphDatabase
-import glob
-import os
 from neo4j.graph import Node, Relationship
+
 from app.error import ThreadStopException
+from app.services.query_generator_interface import QueryGeneratorInterface
+from resilience.circuit_breaker import CircuitBreaker
+from resilience.exceptions import classify_database_exception
+from resilience.executor import execute_with_resilience
+from resilience.retry_policy import get_retry_policy
 
 load_dotenv()
 
@@ -18,21 +24,51 @@ logger = logging.getLogger(__name__)
 
 class CypherQueryGenerator(QueryGeneratorInterface):
     def __init__(self, dataset_path: str):
-        self.human_driver = GraphDatabase.driver(
+        cb_threshold = int(os.getenv("NEO4J_CB_THRESHOLD", "3"))
+        cb_recovery = float(os.getenv("NEO4J_CB_RECOVERY_TIMEOUT", "30"))
+        self._retry_policy = get_retry_policy()
+        self._circuit_breakers = {
+            "human": CircuitBreaker(threshold=cb_threshold, recovery_timeout=cb_recovery),
+            "fly": CircuitBreaker(threshold=cb_threshold, recovery_timeout=cb_recovery),
+        }
+        self.human_driver = self._init_driver_with_cb(
+            "human",
             os.getenv('HUMAN_NEO4J_URI'),
-            auth=(os.getenv('HUMAN_NEO4J_USERNAME'), os.getenv('HUMAN_NEO4J_PASSWORD'))
+            os.getenv('HUMAN_NEO4J_USERNAME'),
+            os.getenv('HUMAN_NEO4J_PASSWORD')
         )
-        self.fly_driver = GraphDatabase.driver(
+        self.fly_driver = self._init_driver_with_cb(
+            "fly",
             os.getenv('FLY_NEO4J_URI'),
-            auth=(os.getenv('FLY_NEO4J_USERNAME'), os.getenv('FLY_NEO4J_PASSWORD'))
+            os.getenv('FLY_NEO4J_USERNAME'),
+            os.getenv('FLY_NEO4J_PASSWORD')
         )
         from app.lib.result_formatter import Result_Formatter
         self.formatter = Result_Formatter()
         # self.dataset_path = dataset_path
         # self.load_dataset(self.dataset_path)
 
+    def _init_driver_with_cb(self,species,uri,username,password):
+        circuit_breaker = self._circuit_breakers[species]
+        retry_no_jitter =  get_retry_policy(with_jitter=False)
+        def _operation():
+            driver = GraphDatabase.driver(uri,auth=(username,password))
+            # Test the connection
+            try:
+                with driver.session() as session:
+                    session.run("RETURN 1")
+                    return driver
+            except ThreadStopException:
+                raise
+            except Exception as exc:
+                raise classify_database_exception(exc,backend="neo4j") from exc
+            
+        return execute_with_resilience(_operation,circuit_breaker=circuit_breaker,retry_policy=retry_no_jitter)
     def close(self):
-        self.driver.close()
+        if self.human_driver is not None:
+            self.human_driver.close()
+        if self.fly_driver is not None:
+            self.fly_driver.close()
 
     def load_dataset(self, path: str) -> None:
         if not os.path.exists(path):
@@ -68,10 +104,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         logger.info(
             f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code, stop_event=None,  species="human"):
+    def _run_query_once(self, query_code, stop_event, driver):
         results = []
-        driver = self.human_driver if species == "human" else self.fly_driver
-        # use lazy loading for improved performance
         with driver.session() as session:
             result = session.run(query_code)
             for record in result:
@@ -79,6 +113,26 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     raise ThreadStopException('Query runner is stopped')
                 results.append(record)
         return results
+
+    def run_query(self, query_code, stop_event=None, species="human"):
+        driver = self.human_driver if species == "human" else self.fly_driver
+        circuit_breaker = self._circuit_breakers.get(
+            species, self._circuit_breakers["human"]
+        )
+
+        def _operation():
+            try:
+                return self._run_query_once(query_code, stop_event, driver)
+            except ThreadStopException:
+                raise
+            except Exception as exc:
+                raise classify_database_exception(exc, backend="neo4j") from exc
+
+        return execute_with_resilience(
+            _operation,
+            circuit_breaker,
+            retry_policy=self._retry_policy,
+        )
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         nodes = requests['nodes']

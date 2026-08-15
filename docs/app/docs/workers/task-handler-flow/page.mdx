@@ -1,0 +1,85 @@
+---
+order: 2
+title: Task Handler Flow
+description: How Celery tasks are defined, submitted, and executed.
+---
+
+# Task Handler Flow
+
+## Where tasks are defined
+
+**File:** `app/workers/task_handler.py`
+
+This module contains the `@celery_app.task` decorated functions that execute on worker nodes.
+
+## Main tasks
+
+### `run_query`
+
+Executes a single graph query. This is the primary task for most user-facing queries.
+
+**Inputs:** Request parameters, user ID, annotation config, backend type  
+**Flow:**
+1. Sets Redis status to `PROCESSING`
+2. Instantiates the correct backend generator based on `db_type`
+3. Calls `annotation_controller.handle_client_request()` to build and run the query
+4. Publishes progress updates to Redis `socket_event` channel
+5. Saves the result to MongoDB via `AnnotationStorageService`
+6. Sets Redis status to `COMPLETE` and publishes final event
+
+### `run_batch_query`
+
+Handles large result sets by fetching node types in batches.
+
+**When it's used:** When the result set size exceeds `BATCH_NODE_THRESHOLD` (50) and the node type is below `BATCH_MAX_TYPE_SIZE` (500,000).
+
+**Flow:** Similar to `run_query`, but iterates over node types in batches, publishing progress after each batch.
+
+### `process_vcf`
+
+Processes uploaded VCF files for variant annotation.
+
+**Flow:**
+1. Reads the VCF file from the upload path
+2. Extracts variant records
+3. Queries the graph backend for each variant
+4. Returns annotated variant data
+
+## Progress publishing
+
+Tasks publish progress to Redis using a helper:
+
+```python
+def set_annotation_redis(annotation_id, status, progress=None, message=None):
+    key = f"annotation:{annotation_id}:status"
+    data = {"status": status}
+    if progress is not None:
+        data["progress"] = progress
+    if message is not None:
+        data["message"] = message
+    redis_client.setex(key, 3600, json.dumps(data))
+    redis_client.publish("socket_event", json.dumps({
+        "annotation_id": annotation_id,
+        **data
+    }))
+```
+
+## Task result handling
+
+When the task completes:
+
+1. The result is saved to MongoDB as an `Annotation` document (with status `COMPLETE` or `FAILED`).
+2. The Redis status key is updated.
+3. A final `socket_event` message is published.
+
+## Where results go
+
+- **MongoDB:** Full annotation record with query, results, and metadata — accessible via `GET /api/v1/query/annotations/{id}`
+- **Redis:** Short-lived status and cached results (TTL = `REDIS_EXPIRATION`)
+- **Socket.IO:** Realtime progress updates to frontend
+
+## What to read next
+
+- [Celery Overview](/docs/workers/celery-overview)
+- [Cancellation and Status](/docs/workers/cancellation-and-status)
+- [Redis State Model](/docs/workers/redis-state-model)

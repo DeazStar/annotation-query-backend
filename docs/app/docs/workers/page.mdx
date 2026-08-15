@@ -1,0 +1,23 @@
+---
+order: 5
+title: Workers
+description: Celery worker architecture, task lifecycle, and Redis state model.
+icon: workers
+---
+
+# Workers
+
+The worker subsystem handles all asynchronous graph query execution using Celery. It runs as a separate process pool, keeping the HTTP layer responsive while expensive graph traversals execute in the background.
+
+## Components
+
+- **Celery app** (`app/workers/celery_app.py`) — creates the Celery application, configures Redis broker and result backend.
+- **Task handler** (`app/workers/task_handler.py`) — defines Celery task functions and Redis state management utilities.
+- **Redis** — serves as broker (task queue), result backend, and pub-sub event channel.
+
+## Pages in this section
+
+- [Celery Overview](/docs/workers/celery-overview)
+- [Task Handler Flow](/docs/workers/task-handler-flow)
+- [Cancellation and Status](/docs/workers/cancellation-and-status)
+- [Redis State Model](/docs/workers/redis-state-model)

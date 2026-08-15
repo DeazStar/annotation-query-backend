@@ -1,0 +1,83 @@
+---
+order: 4
+title: Logging and Monitoring
+description: How the system logs events and reports errors.
+---
+
+# Logging and Monitoring
+
+## Logging setup
+
+**File:** `logger.py` at repo root
+
+The system uses Python's standard `logging` module. At startup, `init_logging()` configures:
+
+- Log level (default: INFO)
+- Log format (timestamp, level, module, message)
+- Output destination (stdout/stderr)
+
+Per-module log level overrides suppress verbose dependencies:
+
+```python
+logging.getLogger('pymongo').setLevel(logging.CRITICAL)
+logging.getLogger('flask_redis').setLevel(logging.CRITICAL)
+logging.getLogger('werkzeug').disabled = True
+```
+
+## Performance logging
+
+A `perf_logger` is initialized separately for performance metrics. This logger tracks:
+
+- Request duration
+- Query execution time
+- Task processing time
+
+## Error tracking: Sentry
+
+The system integrates with Sentry via `sentry-sdk` for production error tracking:
+
+```python
+import sentry_sdk
+sentry_sdk.init(dsn=os.getenv('SENTRY_DSN'))
+```
+
+Sentry captures:
+- Unhandled exceptions in API handlers
+- Celery task failures
+- Background task crashes
+
+## Elasticsearch logging
+
+If configured, the system connects to Elasticsearch at startup for log indexing and search:
+
+```python
+es_db = Elasticsearch(ES_URL, api_key=ES_API_KEY)
+if es_db.ping():
+    print("Elasticsearch connected")
+```
+
+The connection is non-blocking — if Elasticsearch is unreachable, the system continues without it.
+
+## What to look for in logs
+
+| Scenario | Log pattern |
+|----------|-------------|
+| Startup failure | `Error parsing YAML file`, `Config file not found` |
+| Redis connection issue | `Error forwarding event` |
+| Worker crash | Sentry exception + Celery task retry |
+| Query error | Backend-specific error with traceback |
+| Auth failure | `Token is missing!`, `Token is invalid!` |
+
+## Monitoring checklist
+
+- Redis connectivity (both app and Celery)
+- MongoDB connection and query latency
+- Celery worker availability and queue depth
+- MORK CLI container status (if applicable)
+- API server HTTP error rate (5xx responses)
+- Sentry error rate
+
+## What to read next
+
+- [Failure Modes](/docs/operations/failure-modes)
+- [Runtime Architecture](/docs/operations/runtime-architecture)

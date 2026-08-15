@@ -1,0 +1,105 @@
+---
+order: 2
+title: Docker and Compose
+description: Container setup and Docker Compose service definitions.
+---
+
+# Docker and Compose
+
+## Dockerfile
+
+**File:** `Dockerfile` at repo root
+
+Base image: `python:3.10-slim`
+
+Key features:
+- Installs Docker CLI inside the container (for MORK CLI Docker-in-Docker)
+- Copies `requirements.txt` and installs Python dependencies
+- Copies the application code
+- Exposes `$APP_PORT`
+- Default command: `uvicorn app.main:socket_app --host 0.0.0.0 --port $APP_PORT`
+
+## Docker Compose services
+
+**File:** `docker-compose.yml` at repo root
+
+### `annotation_service`
+
+The FastAPI application server.
+
+- **Image:** `${DOCKER_HUB_REPO}` (builds from Dockerfile)
+- **Port:** `${APP_PORT}`
+- **Command:** `gunicorn app.main:socket_app --workers 4 --worker-class uvicorn.workers.UvicornWorker --bind 0.0.0.0:${APP_PORT}`
+- **Depends on:** mongodb, redis
+- **Volumes:** repo mount, data mount, Docker socket, shared memory
+- **Restart:** always
+
+### `celery_worker`
+
+The Celery task worker pool.
+
+- **Command:** `celery -A app.workers.celery_app worker --loglevel=info --concurrency 4 --max-tasks-per-child 50`
+- **Depends on:** annotation_service, redis, mongodb
+- **Environment:** inherits all from annotation_service, plus `C_FORCE_ROOT=1`
+
+### `mongodb`
+
+MongoDB database.
+
+- **Image:** `mongo:latest`
+- **Port:** `${MONGODB_DOCKER_PORT}:27017`
+- **Volume:** `mongo_data:/data/db`
+
+### `redis`
+
+Redis for task broker, state, and pub-sub.
+
+- **Image:** `redis:latest`
+- **Port:** `${REDIS_DOCKER_PORT:-6380}:6379`
+- **Volume:** `redis_data:/data`
+
+### `caddy`
+
+Reverse proxy for production.
+
+- **Image:** `caddy:latest`
+- **Port:** `${CADDY_PORT}:${CADDY_PORT_FORWARD}`
+- **Command:** `caddy reverse-proxy --from http://0.0.0.0:${CADDY_PORT} --to http://annotation_service:${APP_PORT}`
+
+## Environment variables for compose
+
+Required in `.env` when using Docker Compose:
+
+```
+APP_PORT=8000
+MONGODB_DOCKER_PORT=27017
+CADDY_PORT=5000
+CADDY_PORT_FORWARD=8000
+REDIS_DOCKER_PORT=6380
+DOCKER_HUB_REPO=your-user/annotation-query-backend
+MONGO_URI=mongodb://mongodb:27017/annotations
+REDIS_URL=redis://redis:6379/0
+```
+
+## Starting and stopping
+
+```bash
+docker-compose up --build    # Full stack
+docker-compose down          # Tear down
+```
+
+The `run.sh` script also provides lifecycle management:
+
+```bash
+sudo ./run.sh run      # Build and start
+sudo ./run.sh push     # Build and push to Docker Hub
+sudo ./run.sh clean    # Stop and remove
+sudo ./run.sh stop     # Stop without removing
+sudo ./run.sh re-run   # Restart existing containers
+```
+
+## What to read next
+
+- [Runtime Architecture](/docs/operations/runtime-architecture)
+- [Kubernetes Staging](/docs/operations/kubernetes-staging)
+- [Local Development](/docs/getting-started/local-development)

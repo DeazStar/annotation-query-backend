@@ -1,0 +1,46 @@
+---
+order: 2
+title: MeTTa Backend
+description: Experimental backend using the hyperon MeTTa runtime.
+---
+
+# MeTTa Backend
+
+## What it is
+
+The MeTTa backend uses the hyperon MeTTa runtime (`hyperon` Python package) to execute queries against MeTTa-format data files. MeTTa is a formal language for modeling biological systems.
+
+## Where it lives
+
+**File:** `app/services/metta_generator.py` — `MeTTa_Query_Generator` class
+
+## Why it exists
+
+MeTTa support was added as a research alternative to the Cypher/Neo4j backend. It allows the system to work with MeTTa-format knowledge graphs without requiring a running Neo4j instance.
+
+## How it works
+
+The `MeTTa_Query_Generator`:
+
+1. Reads MeTTa data files from the configured data directory (`./Data`)
+2. Parses query parameters into MeTTa-compatible expressions
+3. Executes queries using the hyperon MeTTa runtime
+4. Transforms results into the uniform node/edge format
+
+## Limitations
+
+- **Performance:** The hyperon Python runtime is significantly slower than Neo4j or MORK CLI for large graphs.
+- **Scalability:** Limited by available memory — not suitable for graphs exceeding available RAM.
+- **Maintenance:** The hyperon library version (`0.2.10`) may lag behind upstream MeTTa developments.
+- **Experimental:** Not recommended for production use.
+
+## Dependencies
+
+- **hyperon==0.2.10** Python package
+- **MeTTa data files** in the configured data directory
+
+## What to read next
+
+- [Backend Selection](/docs/architecture/backend-selection)
+- [MORK CLI Backend](/docs/data-sources/mork-cli-backend)
+- [Cypher Backend](/docs/data-sources/cypher-backend)

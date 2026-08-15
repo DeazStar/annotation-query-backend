@@ -1,0 +1,94 @@
+---
+order: 4
+title: Project Map
+description: Repository directory structure at a glance.
+---
+
+# Project Map
+
+```
+annotation-query-backend/
+├── app/                          # Python application package
+│   ├── __init__.py               # Flask app initialization (legacy)
+│   ├── main.py                   # FastAPI entrypoint (current runtime)
+│   ├── annotation_controller.py  # Core annotation orchestration logic
+│   ├── constants.py              # Enums, graph info paths, form field defs
+│   ├── error.py                  # Custom exception (ThreadStopException)
+│   ├── routes.py                 # Flask routes (legacy, being phased out)
+│   ├── api/
+│   │   └── api_v1/
+│   │       ├── api.py            # FastAPI router root — includes graph, query, annotation_sharing
+│   │       └── endpoints/
+│   │           ├── graph.py          # Schema and graph-info endpoints
+│   │           ├── query.py          # Query execution endpoints (sync + async)
+│   │           └── annotation_sharing.py  # Share/unshare annotations
+│   ├── core/
+│   │   └── config.py             # Pydantic Settings — loads .env + config.yaml
+│   ├── events/
+│   │   └── socket_event.py       # Socket.IO event handlers
+│   ├── lib/                      # Utility modules
+│   │   ├── auth.py               # JWT token_required decorators (Flask + Socket.IO)
+│   │   ├── email.py              # Flask-Mail integration
+│   │   ├── graph.py              # Graph data structures
+│   │   ├── heuristic_sort.py     # Result sorting heuristics
+│   │   ├── limit_graph.py        # Graph result limiting
+│   │   ├── map_graph.py          # Graph mapping utilities
+│   │   ├── query_canonical.py    # Query canonicalization (fingerprinting)
+│   │   ├── utils.py              # CSV/TSV/Excel conversion utilities
+│   │   └── validator.py          # Request validation
+│   ├── models/                   # ODM models (pymongoose)
+│   │   ├── annotation.py         # Annotation document schema
+│   │   ├── user.py               # User document schema
+│   │   └── shared_annotation.py  # SharedAnnotation document schema
+│   ├── persistence/              # Storage service layer
+│   │   ├── __init__.py           # Exports all storage services
+│   │   ├── annotation_storage_service.py
+│   │   ├── user_storage_service.py
+│   │   └── shared_annotation_storage_service.py
+│   ├── prompts/                  # LLM prompt templates
+│   ├── services/                 # Business logic and backend generators
+│   │   ├── schema_data.py        # SchemaManager — loads YAML configs, builds schema
+│   │   ├── cypher_generator.py   # CypherQueryGenerator — Neo4j query builder
+│   │   ├── metta_generator.py    # MeTTa_Query_Generator — hyperon-based engine
+│   │   ├── mork_cli_generator.py # MorkQueryGenerator — Docker CLI wrapper
+│   │   ├── llm_handler.py        # LLM routing (OpenAI / Gemini)
+│   │   └── task_service.py       # Celery task submission helpers
+│   ├── socketio/
+│   │   └── server.py             # python-socketio server setup (async)
+│   └── workers/                  # Celery task definitions
+│       ├── celery_app.py         # Celery app creation + Redis broker config
+│       └── task_handler.py       # TaskStatus enum, Redis state helpers, Celery tasks
+├── config/                       # Backend configuration
+│   ├── config.yaml               # Database type selection + data paths
+│   ├── schema_config.yaml        # Schema YAML definitions
+│   ├── biocypher_config.yaml     # BioCypher pipeline config
+│   └── schema/                   # Individual schema definition files
+├── Data/                         # Graph metadata and JSON info files
+│   ├── graph_info.json
+│   └── count_info.json
+├── tests/                        # Test suite
+│   ├── conftest.py               # Pytest fixtures (TestClient, SchemaManager)
+│   ├── integration/              # Integration tests
+│   ├── unit/                     # Unit tests
+│   └── lib/                      # Test utility libraries
+├── docs/                         # Engineering handbook (this site)
+│   ├── app/
+│   │   └── docs/                 # MDX content
+│   ├── next.config.ts
+│   ├── docs.config.tsx
+│   └── package.json
+├── docker-compose.yml            # Full stack: API, worker, MongoDB, Redis, Caddy
+├── Dockerfile                    # Python 3.10-slim, Docker-in-Docker for MORK
+├── k8s/                          # Kubernetes manifests (staging)
+├── scripts/                      # CI and deployment scripts
+├── run.sh                        # Docker lifecycle script
+├── run_ci_local.sh               # Local CI simulation
+├── MORK_CLI_README.md            # MORK CLI setup guide
+└── requirements.txt              # Python dependencies
+```
+
+## What to read next
+
+- [System Overview](/docs/architecture/system-overview)
+- [Key Files](/docs/reference/key-files)
+- [API Overview](/docs/api/overview)

@@ -1,0 +1,87 @@
+---
+order: 3
+title: Cancellation and Status
+description: How running Celery tasks are cancelled and how status is tracked.
+---
+
+# Cancellation and Status
+
+## Task status values
+
+Tasks pass through a lifecycle of status values, tracked in both Redis and MongoDB:
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING` | Task created but not yet picked up by a worker |
+| `PROCESSING` | Worker is actively executing the task |
+| `COMPLETE` | Task finished successfully |
+| `FAILED` | Task raised an exception |
+| `CANCELLED` | User requested cancellation before completion |
+
+Status is stored in `app/constants.py` as the `TaskStatus` enum:
+
+```python
+class TaskStatus(Enum):
+    PENDING = 'PENDING'
+    CANCELLED = 'CANCELLED'
+    COMPLETE = 'COMPLETE'
+    FAILED = 'FAILED'
+```
+
+## Redis state key
+
+For every submitted task, a Redis key is created:
+
+```
+annotation:<task_id>:status
+```
+
+The value is a JSON string:
+```json
+{
+  "status": "PROCESSING",
+  "progress": 0.45,
+  "message": "Executing graph traversal..."
+}
+```
+
+Keys have a TTL of `REDIS_EXPIRATION` seconds (default 3600).
+
+## Cancellation flow
+
+1. **API call:** Frontend sends `POST /api/v1/query/cancel` with `{ "task_id": "..." }`.
+2. **Redis signal:** The endpoint sets a Redis key `annotation:<task_id>:cancel` to `"true"`.
+3. **Worker check:** During execution, the task periodically checks for the cancel key:
+   ```python
+   if redis_client.exists(f"annotation:{task_id}:cancel"):
+       raise ThreadStopException("Task cancelled by user")
+   ```
+4. **Cleanup:** The `ThreadStopException` is caught, Redis status is set to `CANCELLED`, and the cancellation event is published to the Socket.IO bridge.
+
+## Worker-side status management (`app/workers/task_handler.py`)
+
+The `get_annotation_redis` helper reads the current status from Redis. The `set_annotation_redis` helper writes status updates and publishes events.
+
+## MongoDB persistence
+
+When a task completes or fails, the final status is saved to the MongoDB annotation document. This provides a persistent record that outlives the Redis TTL.
+
+## Conditional updates
+
+To prevent race conditions (e.g., two concurrent GET requests overwriting each other), MongoDB updates use conditional writes:
+
+```python
+Annotation.update(
+    {"_id": id, "status": "PENDING"},
+    {"$set": data},
+    many=False
+)
+```
+
+This ensures only the first completion update succeeds when status is still `PENDING`.
+
+## What to read next
+
+- [Task Handler Flow](/docs/workers/task-handler-flow)
+- [Redis State Model](/docs/workers/redis-state-model)
+- [Failure Modes](/docs/operations/failure-modes)

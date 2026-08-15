@@ -30,7 +30,7 @@ logging.getLogger('werkzeug').disabled = True
 socketio = SocketIO(app, cors_allowed_origins='*',
                     async_mode='threading', logger=False, engineio_logger=False)
 
-app.config['REDIS_URL'] = os.getenv('REDIS_URL')
+app.config['REDIS_URL'] = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
 # intialize redis
 redis_client = FlaskRedis(app)

@@ -1,0 +1,67 @@
+---
+order: 7
+title: Data and Storage
+description: How the system stores and manages data across Redis, MongoDB, and graph data directories.
+---
+
+# Data and Storage
+
+The system uses three distinct storage systems for different purposes.
+
+## Redis
+
+**Purpose:** Transient state, task broker, realtime event bus.
+
+| Use case | Data structure | Key pattern |
+|----------|---------------|-------------|
+| Task status | String | `annotation:<task_id>:status` |
+| Celery broker | List/stream (internal) | Managed by Celery |
+| Celery result backend | String (internal) | Managed by Celery |
+| Realtime events | Pub/sub channel | `socket_event` |
+| Result caching | String (JSON) | Query fingerprint as key |
+
+Expiration: All task state keys expire after `REDIS_EXPIRATION` seconds (default 3600).
+
+**Where:** `app/workers/task_handler.py` manages Redis state. `app/core/config.py` configures the Redis URL.
+
+## MongoDB
+
+**Purpose:** Persistent storage for annotations, user profiles, and share records.
+
+| Collection | Model | Purpose |
+|-----------|-------|---------|
+| `annotations` | `Annotation` | Query history, results, status |
+| `users` | `User` | User preferences (species, data source) |
+| `shared_annotations` | `SharedAnnotation` | Annotation sharing records |
+
+All models use `pymongoose` ODM with schema definitions in `app/models/`.
+
+**Where:** `db.py` initializes the MongoDB connection. `app/persistence/*` contains CRUD service classes.
+
+## Graph data directories
+
+**Purpose:** Backend-specific data files for graph query execution.
+
+| Backend | Data directory | Contents |
+|---------|---------------|----------|
+| Cypher | `cypher_data/` | Neo4j-compatible data |
+| MeTTa | `metta_data/` | MeTTa files |
+| MORK CLI | `mork_data/` (or host mount) | Compiled MORK binary data |
+
+In production with Docker Compose, data directories are mounted from the host (e.g., `/mnt/hdd_1/biocypher-kg/output/`).
+
+## Graph metadata (JSON files)
+
+| File | Location | Contents |
+|------|----------|----------|
+| `graph_info.json` | `Data/graph_info.json` | Graph structure metadata |
+| `count_info.json` | `Data/count_info.json` | Node and edge counts |
+
+These are loaded at startup and served by the `/kg-info` endpoint.
+
+## What to read next
+
+- [MongoDB Models](/docs/persistence/mongodb-models)
+- [Annotation Storage](/docs/persistence/annotation-storage)
+- [Caching and Expiration](/docs/persistence/caching-and-expiration)
+- [Redis State Model](/docs/workers/redis-state-model)

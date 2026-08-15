@@ -1,0 +1,81 @@
+---
+order: 2
+title: Request Lifecycle
+description: How a query request flows from the frontend through the stack and back.
+---
+
+# Request Lifecycle
+
+This page traces a single query request from HTTP entry to JSON response.
+
+## 1. HTTP request arrives
+
+A frontend sends a POST request to `/api/v1/query/search` (or `/api/v1/query/count`) with a JSON body and `Authorization: Bearer <JWT>` header.
+
+The request hits Caddy (production) or uvicorn (development), which proxies to the FastAPI app.
+
+## 2. FastAPI routing
+
+`app/main.py` mounts the API router at the prefix configured in `settings.API_V1_STR` (default `/api/v1`). The router in `app/api/api_v1/api.py` dispatches to the matching endpoint:
+
+- `graph.router` → `/graph/*` endpoints (schema, nodes, edges, graph-info)
+- `query.router` → `/query/*` endpoints (search, count, annotation CRUD)
+- `annotation_sharing.router` → `/share/*` endpoints
+
+## 3. Auth and validation
+
+The `token_required` decorator (from `app/lib/auth.py`) extracts the JWT from the `Authorization` header, decodes it, and injects `current_user_id` into the handler.
+
+Request body is validated via Pydantic models (defined inline in endpoint files).
+
+## 4. Sync vs async dispatch
+
+**Synchronous path** (simple queries): The endpoint handler calls the backend generator directly and returns results inline. This is used for schema lookups, graph-info, and simple count queries.
+
+**Asynchronous path** (complex/expensive queries): The handler submits a Celery task via `task_service.py` and immediately returns a task ID. The frontend polls or listens for completion via Socket.IO. This path is used for:
+
+- Graph search queries (nodes + edges)
+- Batch queries (large result sets)
+- VCF file processing
+
+## 5. Backend selection
+
+The endpoint or task handler resolves the active backend from `app.config['db_type']` (set at startup from `config.yaml`). The available generators are:
+
+- `CypherQueryGenerator` — builds and executes Cypher queries against Neo4j
+- `MeTTa_Query_Generator` — executes queries using the hyperon MeTTa runtime
+- `MorkQueryGenerator` — shells out to the MORK CLI Docker container
+
+## 6. Query execution
+
+The generator:
+1. Builds a query string from the request parameters (node types, filters, genome coordinates)
+2. Executes the query against the backend
+3. Returns structured result data (nodes, edges, counts)
+
+## 7. Response assembly
+
+The endpoint or task result handler:
+
+1. Applies result limits (`QUERY_MAX_NODES = 200_000`, `BATCH_MAX_TYPE_SIZE = 500_000`)
+2. Applies heuristic sorting for consistent ordering
+3. Optionally caches results in Redis (keyed by `query_fingerprint`)
+4. Saves an annotation record to MongoDB (with status, query, result metadata)
+5. Returns JSON to the client
+
+For async tasks, the Celery task publishes progress/result events to the Redis `socket_event` channel, which the lifespan listener forwards to the relevant Socket.IO room.
+
+## 8. Response returned
+
+The JSON response contains:
+
+- `nodes` — array of node objects with labels, properties, IDs
+- `edges` — array of edge objects with source/target references
+- `node_count`, `edge_count` — aggregate counts
+- `annotation_id` — unique ID for the saved annotation
+
+## What to read next
+
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [API: Query Endpoints](/docs/api/query-endpoints)
+- [Realtime Events](/docs/architecture/realtime-events)

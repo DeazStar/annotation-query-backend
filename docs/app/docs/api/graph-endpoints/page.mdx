@@ -1,0 +1,72 @@
+---
+order: 1
+title: Graph Endpoints
+description: Schema discovery, node/edge listing, and graph metadata endpoints.
+---
+
+# Graph Endpoints
+
+## Why they exist
+
+The frontend needs to know the graph schema — what node types exist, what edges connect them, and what properties are available — to render query builders and visualizations. These endpoints serve that metadata.
+
+## Endpoints
+
+### `GET /api/v1/graph/kg-info`
+
+Returns the full graph information JSON (`Data/graph_info.json`) loaded at startup.
+
+**Response:** `application/json` — the complete graph info structure.
+
+### `GET /api/v1/graph/nodes`
+
+Returns all node types and their properties, filtered by the current user's selected species.
+
+**Auth:** JWT token required. Species is resolved from the user's MongoDB profile (defaults to `human`).
+
+**Response:**
+```json
+{
+  "gene": { "label": "Gene", "properties": { "name": "string", "type": "string", "chr": "string" } },
+  "transcript": { "label": "Transcript", "properties": { ... } }
+}
+```
+
+### `GET /api/v1/graph/edges`
+
+Returns edge types and their source/target node types, filtered by species.
+
+### `GET /api/v1/graph/relations/{node_label}`
+
+Returns the edges connected to a specific node type.
+
+### `GET /api/v1/graph/preference-option`
+
+Returns available species and all data sources with their schemas for the frontend preference UI.
+
+### `GET /api/v1/graph/schema`
+
+Returns the filtered schema for a given species and query type (used by the query builder).
+
+## Where they live
+
+**File:** `app/api/api_v1/endpoints/graph.py`
+
+All endpoints delegate to the `SchemaManager` (`app/services/schema_data.py`) which loads YAML configs at startup.
+
+## Dependencies
+
+- `SchemaManager` — must be initialized before any schema endpoint is called
+- `UserStorageService` — used to resolve species per user
+- MongoDB — for user preferences
+
+## Failure modes
+
+- Schema YAML files missing or malformed → endpoints return empty or partial results
+- MongoDB down → species defaults to `human`, endpoints still function
+
+## What to read next
+
+- [Query Endpoints](/docs/api/query-endpoints)
+- [Schema Management](/docs/data-sources/schema-management)
+- [Request Lifecycle](/docs/architecture/request-lifecycle)

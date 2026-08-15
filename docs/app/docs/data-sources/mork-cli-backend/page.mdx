@@ -1,0 +1,78 @@
+---
+order: 3
+title: MORK CLI Backend
+description: Production-recommended backend wrapping a compiled C++ binary via Docker.
+---
+
+# MORK CLI Backend
+
+## What it is
+
+The MORK CLI backend wraps a compiled C++ binary (`mork`) in a Docker container. It shells out to the CLI, passes query parameters as arguments, and parses the structured output. This is the **recommended backend for production**.
+
+## Where it lives
+
+**File:** `app/services/mork_cli_generator.py` — `MorkQueryGenerator` class  
+**README:** `MORK_CLI_README.md` in the repo root
+
+## Why it exists
+
+MORK is a purpose-built biomedical graph engine written in C++. It outperforms both Neo4j and hyperon MeTTa for large-scale biological knowledge graphs (10M+ nodes). Running it via Docker provides:
+
+- **Isolation:** No need to install native binaries on the host
+- **Portability:** Same binary runs across environments
+- **Performance:** Compiled C++ yields sub-second queries on large graphs
+
+## How it works
+
+The `MorkQueryGenerator`:
+
+1. Builds a MORK CLI command string from the query parameters
+2. Runs the command via `subprocess` or Docker `exec`:
+   ```
+   docker exec <container> mork query --type gene --name TP53
+   ```
+3. Parses the CLI output (structured JSON or TSV)
+4. Transforms results into the uniform node/edge format
+
+## Docker-in-Docker
+
+The MORK CLI container runs alongside the main application. In Docker Compose, the application container has the Docker socket mounted (`/var/run/docker.sock`), allowing it to execute Docker commands from within the container.
+
+## Configuration
+
+```yaml
+database:
+  type: mork_cli
+  human:
+    data_dir: /mnt/hdd_1/biocypher-kg/output/hsa/metta_out_v6
+    act_file: human_v6.act
+    graph_info_path: ./Data/graph_info.json
+```
+
+Environment:
+```
+MORK_DATA_DIR=/mnt/hdd_1/biocypher-kg/output/hsa/metta_out_v6
+FLY_MORK_DATA_DIR=/mnt/hdd_1/biocypher-kg/output/dmel/metta
+```
+
+## Setup
+
+See `MORK_CLI_README.md` for:
+- Building the MORK CLI Docker image
+- Preparing data directories
+- Running data preprocessing steps
+- Testing the CLI connection
+
+## Failure modes
+
+- Docker socket not mounted → MORK CLI commands fail
+- MORK container not running → CLI unavailable
+- Data directory missing or incomplete → empty query results
+- Binary version mismatch → parsing errors on output
+
+## What to read next
+
+- [Backend Selection](/docs/architecture/backend-selection)
+- [Schema Management](/docs/data-sources/schema-management)
+- [Docker and Compose](/docs/operations/docker-and-compose)

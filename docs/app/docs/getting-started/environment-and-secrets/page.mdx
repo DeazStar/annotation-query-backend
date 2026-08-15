@@ -1,0 +1,95 @@
+---
+order: 3
+title: Environment and Secrets
+description: Complete reference for environment variables used by the backend.
+---
+
+# Environment and Secrets
+
+The application reads configuration from `.env` at the repo root and from `config/config.yaml`. Environment variables supply secrets, URIs, and operational parameters.
+
+## Required variables
+
+| Variable | Purpose |
+|----------|---------|
+| `REDIS_URL` | Redis connection string, e.g. `redis://redis:6379/0` |
+| `MONGO_URI` | MongoDB connection string |
+| `JWT_SECRET` | Secret key for signing and verifying JWT auth tokens |
+
+## Neo4j (cypher backend only)
+
+| Variable | Purpose |
+|----------|---------|
+| `NEO4J_URI` | Bolt URI for the Neo4j instance |
+| `NEO4J_USERNAME` | Neo4j username |
+| `NEO4J_PASSWORD` | Neo4j password |
+
+## Mail (optional — for annotation sharing notifications)
+
+| Variable | Purpose |
+|----------|---------|
+| `MAIL_SERVER` | SMTP server address (e.g. smtp.gmail.com) |
+| `MAIL_PORT` | SMTP port (587 for TLS, 465 for SSL) |
+| `MAIL_USE_TLS` | Enable TLS (`true`/`false`) |
+| `MAIL_USE_SSL` | Enable SSL (`true`/`false`) |
+| `MAIL_USERNAME` | SMTP auth username |
+| `MAIL_PASSWORD` | SMTP auth password |
+| `MAIL_DEFAULT_SENDER` | From-address for outgoing emails |
+
+## LLM (for title generation and graph summarization)
+
+| Variable | Purpose |
+|----------|---------|
+| `LLM_MODEL` | Model provider: `openai` or `gemini` |
+| `OPENAI_API_KEY` | OpenAI API key (when LLM_MODEL=openai) |
+| `GEMINI_API_KEY` | Google Gemini API key (when LLM_MODEL=gemini) |
+
+## Elasticsearch (optional — for search indexing)
+
+| Variable | Purpose |
+|----------|---------|
+| `ES_URL` | Elasticsearch endpoint URL |
+| `ES_API_KEY` | Elasticsearch API key |
+
+## Docker Compose and deployment
+
+| Variable | Purpose |
+|----------|---------|
+| `APP_PORT` | Port the application listens on (default 8000) |
+| `DOCKER_HUB_REPO` | Docker Hub repo in `user/repo` format |
+| `MONGODB_DOCKER_PORT` | MongoDB container port mapping |
+| `CADDY_PORT` | Caddy reverse proxy external port |
+| `CADDY_PORT_FORWARD` | Caddy forward target port |
+| `REDIS_EXPIRATION` | Redis key TTL in seconds (default 3600) |
+| `COMPOSE_PROJECT_NAME` | Docker Compose project name |
+| `FASTAPI_APP` | Set to `"true"` to use FastAPI mode |
+| `MORK_DATA_DIR` | Path to MORK data directory (host mount) |
+| `FLY_MORK_DATA_DIR` | Path to fly MORK data directory |
+| `REDIS_URL_BROKER` | Separate Redis URL for Celery broker (defaults to `redis://redis:6379/1`) |
+
+## Example `.env`
+
+```bash
+# Core
+REDIS_URL=redis://localhost:6379/0
+MONGO_URI=mongodb://localhost:27017/annotations
+JWT_SECRET=your-secret-key
+
+# Neo4j
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+
+# LLM
+LLM_MODEL=openai
+OPENAI_API_KEY=sk-...
+
+# Docker
+APP_PORT=8000
+```
+
+## What to read next
+
+- [Local Development](/docs/getting-started/local-development)
+- [Configuration Model](/docs/architecture/configuration-model)
+- [Operations](/docs/operations)

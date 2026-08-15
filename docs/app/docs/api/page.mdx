@@ -1,0 +1,36 @@
+---
+order: 4
+title: API Surface
+description: Route groups, request boundaries, and the exposed backend interface.
+icon: api
+---
+
+# API Surface
+
+The backend exposes a RESTful HTTP API at `/api/v1/` and a WebSocket endpoint at `/ws`. All endpoints (except `/health`) require JWT authentication via the `Authorization: Bearer <token>` header.
+
+## Route groups
+
+| Prefix | Router | Description |
+|--------|--------|-------------|
+| `/api/v1/graph` | `app.api.api_v1.endpoints.graph` | Schema, nodes, edges, graph info |
+| `/api/v1/query` | `app.api.api_v1.endpoints.query` | Query execution, annotation CRUD |
+| `/api/v1/share` | `app.api.api_v1.endpoints.annotation_sharing` | Share/unshare annotations |
+| `/api/v1/health` | inline in `api.py` | Health check |
+| `/ws` | inline in `api.py` | Raw WebSocket echo (basic) |
+
+## Router setup (`app/api/api_v1/api.py`)
+
+```python
+api_router = APIRouter()
+api_router.include_router(graph.router, tags=["graph"])
+api_router.include_router(query.router, tags=["query"])
+api_router.include_router(annotation_sharing.router, tags=["annotation_sharing"])
+```
+
+## Pages in this section
+
+- [Graph Endpoints](/docs/api/graph-endpoints)
+- [Query Endpoints](/docs/api/query-endpoints)
+- [Annotation Sharing](/docs/api/annotation-sharing)
+- [WebSocket and Socket.IO](/docs/api/websocket-and-socketio)

@@ -1,0 +1,82 @@
+---
+order: 1
+title: Celery Overview
+description: How Celery is configured and integrated into the system.
+---
+
+# Celery Overview
+
+## What it is
+
+Celery is a distributed task queue. The annotation-query-backend uses it to execute long-running graph queries, batch queries, and VCF processing in background worker processes.
+
+## Why Celery
+
+- **Non-blocking API:** Query endpoints return immediately with a task ID instead of blocking for seconds.
+- **Worker isolation:** Worker processes run independently — if a query crashes, the API stays up.
+- **Horizontal scaling:** Multiple worker containers can process tasks in parallel.
+- **Rich feature set:** Task retries, rate limiting, result backends, progress reporting.
+
+## Celery app configuration
+
+**File:** `app/workers/celery_app.py`
+
+```python
+from celery import Celery
+
+celery_app = Celery(
+    'annotation_worker',
+    broker='redis://redis:6379/1',      # Database 1 for broker
+    backend='redis://redis:6379/0',      # Database 0 for results
+)
+celery_app.conf.update(
+    task_track_started=True,
+    task_serializer='json',
+    result_serializer='json',
+    accept_content=['json'],
+)
+```
+
+The broker and backend URLs are configurable via `REDIS_URL_BROKER` and `REDIS_URL` environment variables. In Docker Compose, Redis database 0 is used for general state, database 1 for the Celery broker.
+
+## Worker process
+
+In production, workers are launched via the Docker Compose `celery_worker` service:
+
+```bash
+celery -A app.workers.celery_app worker \
+  --loglevel=info \
+  --concurrency 4 \
+  --max-tasks-per-child 50
+```
+
+- **Concurrency:** 4 worker processes per container
+- **Max tasks per child:** 50 (worker restarts after 50 tasks to prevent memory leaks)
+
+## Integration with FastAPI
+
+The FastAPI app does not import Celery directly in its request handlers. Instead:
+
+1. Endpoints in `app/api/api_v1/endpoints/query.py` call `run_query.delay(...)`.
+2. The `app.services.task_service` module provides helper functions for task submission.
+3. Task results are communicated back to the client via the Redis pub-sub → Socket.IO bridge.
+
+## Key files
+
+| File | Purpose |
+|------|---------|
+| `app/workers/celery_app.py` | Celery app instance and configuration |
+| `app/workers/task_handler.py` | Task definitions: `run_query`, `run_batch_query`, `process_vcf` |
+| `app/services/task_service.py` | Task submission helpers for API endpoints |
+
+## Failure modes
+
+- **Redis down:** Workers can't receive tasks or publish results. The Celery app won't start properly.
+- **Worker OOM:** Large graph queries can exhaust memory. The `--max-tasks-per-child` limit mitigates gradual leaks.
+- **Task timeout:** There is no hard timeout on task execution — very large queries may run indefinitely. Cancellation is handled via Redis signals.
+
+## What to read next
+
+- [Task Handler Flow](/docs/workers/task-handler-flow)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Docker and Compose](/docs/operations/docker-and-compose)

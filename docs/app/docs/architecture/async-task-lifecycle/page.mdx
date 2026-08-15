@@ -1,0 +1,81 @@
+---
+order: 3
+title: Async Task Lifecycle
+description: How Celery workers execute long-running graph queries.
+---
+
+# Async Task Lifecycle
+
+## Why async tasks exist
+
+Graph queries against large biomedical datasets can take seconds or minutes. Running them synchronously would block the HTTP worker pool. Celery offloads execution to a separate process pool, keeping the API responsive.
+
+## Task submission
+
+1. A query endpoint (`/api/v1/query/search`) receives a request with `async=true`.
+2. The endpoint calls `run_query.delay(...)` — a Celery task defined in `app/workers/task_handler.py`.
+3. Celery serializes the task arguments and places them on the Redis broker queue (database 1, configured via `REDIS_URL_BROKER`).
+4. The endpoint immediately returns `{ "task_id": "<uuid>", "status": "PENDING" }`.
+
+## Worker pickup
+
+1. A Celery worker process (started via `celery -A app.workers.celery_app worker`) picks the task from the queue.
+2. The worker deserializes the arguments and executes the `run_query` function.
+3. A Redis key `annotation:<task_id>:status` is set to `PENDING`.
+
+## Execution
+
+The worker:
+
+1. Calls `annotation_controller.handle_client_request()` which orchestrates the query.
+2. Resolves the backend generator (cypher/metta/mork) from the app config.
+3. Periodically publishes progress updates to the Redis `socket_event` channel:
+   ```json
+   {
+     "annotation_id": "<task_id>",
+     "status": "PROCESSING",
+     "progress": 0.45,
+     "message": "Executing graph traversal..."
+   }
+   ```
+
+## Progress delivery to frontend
+
+The FastAPI lifespan handler (in `app/main.py`) runs a background `asyncio` task that:
+
+1. Subscribes to the Redis `socket_event` channel via `async pubsub.subscribe('socket_event')`.
+2. On each message, parses the JSON payload and emits it to the Socket.IO room matching `annotation_id`:
+   ```python
+   await sio.emit('update', payload, room=room)
+   ```
+3. The frontend's Socket.IO client receives the `update` event and updates the UI.
+
+## Completion
+
+When the task finishes:
+
+1. Results are saved to MongoDB via `AnnotationStorageService.save()`.
+2. The Redis `annotation:<task_id>:status` key is set to `COMPLETE`.
+3. A final `socket_event` message with `status: "COMPLETE"` is published.
+4. The Celery result backend stores the return value (available via `AsyncResult`).
+
+## Error handling
+
+- If the worker crashes, the task is retried according to Celery's retry policy.
+- If the task raises an exception, Redis status is set to `FAILED` and the error detail is published.
+- Tasks can be cancelled by the user (see [Cancellation and Status](/docs/workers/cancellation-and-status)).
+
+## Task types
+
+| Task | Worker function | Purpose |
+|------|----------------|---------|
+| `run_query` | `app.workers.task_handler.run_query` | Single graph query |
+| `run_batch_query` | `app.workers.task_handler.run_batch_query` | Batched per-type queries for large results |
+| `process_vcf` | `app.workers.task_handler.process_vcf` | VCF file upload processing |
+
+## What to read next
+
+- [Celery Overview](/docs/workers/celery-overview)
+- [Cancellation and Status](/docs/workers/cancellation-and-status)
+- [Redis State Model](/docs/workers/redis-state-model)
+- [Realtime Events](/docs/architecture/realtime-events)

@@ -17,45 +17,69 @@ EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
 
 def handle_client_request(query, request, current_user_id, node_types, species, data_source):
     annotation_id = request.get('annotation_id', None)
-    # check if annotation exist
+    
+    # Check for existing result globally using deduplication
+    from app.services.query_deduplicator import QueryDeduplicator
+    existing_query, query_hash = QueryDeduplicator.get_existing_result(request, species, data_source)
 
-    if annotation_id:
-        existing_query = AnnotationStorageService.get_user_query(
-            annotation_id, str(current_user_id), query[0])
-    else:
-        existing_query = None
-
-    #Event to track tasks
+    # Event to track tasks
     result_done = threading.Event()
     total_count_done = threading.Event()
     label_count_done = threading.Event()
 
-    if existing_query:
+    if existing_query and existing_query.status == TaskStatus.COMPLETE.value:
+        # --- DEDUPLICATION HIT (COMPLETE) ---
         title = existing_query.title
         summary = existing_query.summary
-        annotation_id = existing_query.id
-        meta_data = {
-            "node_count": existing_query.node_count,
-            "edge_count": existing_query.edge_count,
-            "node_count_by_label": existing_query.node_count_by_label,
-            "edge_count_by_label": existing_query.edge_count_by_label,
-        }
-        AnnotationStorageService.update(
-            annotation_id, {"status": TaskStatus.PENDING.value, "updated_at": datetime.datetime.now()})
-        reset_status(annotation_id)
+        path_url = existing_query.path_url
+        
+        if annotation_id:
+            # Point existing annotation to the shared result
+            AnnotationStorageService.update(annotation_id, {
+                "status": TaskStatus.COMPLETE.value,
+                "query": query[0],
+                "query_hash": query_hash,
+                "title": title,
+                "summary": summary,
+                "node_count": existing_query.node_count,
+                "edge_count": existing_query.edge_count,
+                "node_count_by_label": existing_query.node_count_by_label,
+                "edge_count_by_label": existing_query.edge_count_by_label,
+                "path_url": path_url,
+                "updated_at": datetime.datetime.now()
+            })
+        else:
+            # Create a new pointer for this user
+            annotation = {
+                "current_user_id": str(current_user_id),
+                "query": query[0],
+                "query_hash": query_hash,
+                "request": request,
+                "title": title,
+                "summary": summary,
+                "node_types": node_types,
+                "node_count": existing_query.node_count,
+                "edge_count": existing_query.edge_count,
+                "node_count_by_label": existing_query.node_count_by_label,
+                "edge_count_by_label": existing_query.edge_count_by_label,
+                "status": TaskStatus.COMPLETE.value,
+                "path_url": path_url,
+                "data_source": data_source,
+                "species": species
+            }
+            annotation_id = AnnotationStorageService.save(annotation)
 
-        args = {'all_status': {'result_done': result_done, 'total_count_done': total_count_done,
-                               'label_count_done': label_count_done}, 'query': query, 'request': request,
-                'summary': summary, 'meta_data': meta_data, 'data_source': data_source, 'species': species}
-
-        start_thread(annotation_id, args)
+        # Work is done. No need to start threads.
         return Response(
             json.dumps({"annotation_id": str(annotation_id)}),
             mimetype='application/json')
-    elif annotation_id is None:
+
+    # --- DEDUPLICATION MISS OR PENDING ---
+    if annotation_id is None:
         title = llm.generate_title(query[0])
         annotation = {"current_user_id": str(current_user_id),
                       "query": str(query[0]), "request": request,
+                      "query_hash": query_hash,
                       "title": title, "node_types": node_types,
                       "status": TaskStatus.PENDING.value,
                       "data_source": data_source, "species": species}
@@ -64,7 +88,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
 
         args = {'all_status': {'result_done': result_done, 'total_count_done': total_count_done,
                                'label_count_done': label_count_done}, 'query': query, 'request': request,
-                'summary': None, 'meta_data': None, 'data_source': data_source, 'species': species}
+                'summary': None, 'meta_data': None, 'data_source': data_source, 'species': species, 'query_hash': query_hash}
         start_thread(annotation_id, args)
 
         return Response(
@@ -75,6 +99,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
         del request['annotation_id']
         # save the query and return the annotation
         annotation = {"query": str(query[0]), "request": request,
+                      "query_hash": query_hash,
                       "title": title, "node_types": node_types,
                       'status': TaskStatus.PENDING.value, 'node_count': None,
                       'edge_count': None, 'node_count_by_label': None,
@@ -85,7 +110,7 @@ def handle_client_request(query, request, current_user_id, node_types, species, 
 
         args = {'all_status': {'result_done': result_done, 'total_count_done': total_count_done,
                                'label_count_done': label_count_done}, 'query': query, 'request': request,
-                'summary': None, 'meta_data': None, 'species': species}
+                'summary': None, 'meta_data': None, 'species': species, 'query_hash': query_hash}
 
         start_thread(annotation_id, args)
 

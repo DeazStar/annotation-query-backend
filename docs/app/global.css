@@ -1,0 +1,127 @@
+@import "tailwindcss";
+@import "@farming-labs/theme/colorful/css";
+
+:root {
+  color-scheme: light;
+  --aqb-bg: #f5efe3;
+  --aqb-bg-top: #fffaf0;
+  --aqb-ink: #1f2937;
+  --aqb-muted: rgba(31, 41, 55, 0.78);
+  --aqb-accent: #9a3412;
+  --aqb-accent-soft: #f97316;
+  --aqb-panel: rgba(255, 248, 237, 0.82);
+  --aqb-panel-strong: rgba(255, 255, 255, 0.58);
+  --aqb-panel-soft: rgba(255, 255, 255, 0.48);
+  --aqb-shadow: rgba(120, 53, 15, 0.08);
+  --aqb-border: rgba(154, 52, 18, 0.18);
+  --aqb-border-soft: rgba(154, 52, 18, 0.14);
+  --color-fd-background: #fbf6ea;
+  --color-fd-card: rgba(255, 250, 240, 0.88);
+  --color-fd-popover: #fffaf2;
+  --color-fd-foreground: #1f2937;
+  --color-fd-muted: #f3ede1;
+  --color-fd-muted-foreground: #6b7280;
+  --color-fd-border: rgba(154, 52, 18, 0.14);
+  --color-fd-accent: rgba(245, 158, 11, 0.12);
+  --color-fd-secondary: rgba(255, 255, 255, 0.72);
+}
+
+.dark {
+  color-scheme: dark;
+  --aqb-bg: #111418;
+  --aqb-bg-top: #181c21;
+  --aqb-ink: #f5efe4;
+  --aqb-muted: rgba(235, 228, 214, 0.8);
+  --aqb-accent: #f59e0b;
+  --aqb-accent-soft: #fb923c;
+  --aqb-panel: rgba(23, 26, 31, 0.88);
+  --aqb-panel-strong: rgba(18, 21, 26, 0.84);
+  --aqb-panel-soft: rgba(22, 26, 31, 0.76);
+  --aqb-shadow: rgba(0, 0, 0, 0.34);
+  --aqb-border: rgba(245, 158, 11, 0.18);
+  --aqb-border-soft: rgba(245, 158, 11, 0.14);
+  --color-fd-background: #12161b;
+  --color-fd-card: rgba(23, 27, 32, 0.92);
+  --color-fd-popover: #1a1f25;
+  --color-fd-foreground: #f5efe4;
+  --color-fd-muted: #1b2128;
+  --color-fd-muted-foreground: #c4b9a3;
+  --color-fd-border: rgba(245, 158, 11, 0.16);
+  --color-fd-accent: rgba(245, 158, 11, 0.14);
+  --color-fd-secondary: rgba(31, 37, 45, 0.9);
+}
+
+html {
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--aqb-accent-soft) 20%, transparent), transparent 30%),
+    linear-gradient(180deg, var(--aqb-bg-top) 0%, var(--aqb-bg) 100%);
+}
+
+body {
+  color: var(--aqb-ink);
+  background: transparent;
+}
+
+a {
+  text-underline-offset: 0.18em;
+}
+
+.fd-sidebar {
+  background: color-mix(in srgb, var(--color-fd-card) 94%, transparent);
+  border-right: 1px solid var(--color-fd-border);
+  backdrop-filter: blur(14px);
+}
+
+#nd-docs-layout,
+#nd-page {
+  background: transparent;
+}
+
+#nd-subnav,
+[data-toc-popover] header,
+[data-sidebar-panel] {
+  background: color-mix(in srgb, var(--color-fd-card) 92%, transparent) !important;
+  border-color: var(--color-fd-border) !important;
+  backdrop-filter: blur(14px);
+}
+
+#nd-page,
+#nd-page.prose,
+#nd-page .prose {
+  color: var(--color-fd-foreground);
+}
+
+.dark #nd-page,
+.dark #nd-page.prose,
+.dark #nd-page .prose {
+  color: var(--aqb-ink);
+}
+
+.fd-page,
+.fd-docs-content,
+.fd-docs-page {
+  color: var(--color-fd-foreground);
+}
+
+.fd-page :where(p, li) {
+  color: var(--aqb-muted);
+}
+
+.fd-page :where(h1, h2, h3, h4, h5, h6),
+.fd-page strong,
+.fd-page b {
+  color: var(--aqb-ink);
+}
+
+.fd-page a {
+  color: var(--aqb-accent);
+}
+
+.fd-page hr {
+  border-color: var(--color-fd-border);
+}
+
+.dark .fd-page a,
+.dark #nd-page a {
+  color: var(--aqb-accent-soft);
+}

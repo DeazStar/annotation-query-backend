@@ -1,0 +1,55 @@
+---
+order: 4
+title: Caching and Expiration
+description: How query results and task state are cached in Redis.
+---
+
+# Caching and Expiration
+
+## Why caching exists
+
+Repeated queries for the same graph data should not re-execute against the backend. Caching reduces latency for common queries and reduces load on the graph engines.
+
+## Query result caching
+
+Query results can be cached in Redis using a normalized fingerprint. The `query_canonical.py` module produces a reproducible hash from query parameters:
+
+```python
+fingerprint = canonicalize_query(query_params)
+cache_key = f"query_cache:{fingerprint}"
+```
+
+**Lookup:** Before executing a query, the system checks `AnnotationStorageService.get_by_fingerprint(fingerprint)` for a completed annotation with the same fingerprint.
+
+**Storage:** Results are stored as MongoDB annotation documents (not in Redis for long-term caching). Redis is used for short-lived task state, not result caching.
+
+## Task state expiration
+
+All Redis task state keys use `SETEX` with `REDIS_EXPIRATION` (default 3600 seconds):
+
+```
+annotation:<task_id>:status  →  TTL: 3600s
+annotation:<task_id>:cancel  →  TTL: 3600s
+```
+
+After expiration, the key is automatically deleted by Redis. This prevents stale task state from accumulating.
+
+## Why TTL matters
+
+- **Completed tasks:** After TTL expires, the frontend can no longer look up task status from Redis. The client should fall back to MongoDB annotation records.
+- **Cancelled tasks:** The cancel signal key expires after TTL. If the worker doesn't check before the key expires, cancellation may not be detected.
+- **Stale cleanup:** Without TTL, abandoned tasks would leave state in Redis indefinitely.
+
+## Configuration
+
+```python
+REDIS_EXPIRATION = int(os.getenv('REDIS_EXPIRATION', 3600))
+```
+
+Set via environment variable `REDIS_EXPIRATION` in `.env`.
+
+## What to read next
+
+- [Redis State Model](/docs/workers/redis-state-model)
+- [Annotation Storage](/docs/persistence/annotation-storage)
+- [Failure Modes](/docs/operations/failure-modes)

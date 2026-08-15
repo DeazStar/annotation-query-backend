@@ -1,0 +1,76 @@
+---
+order: 1
+title: Runtime Architecture
+description: How the system components run in development and production.
+---
+
+# Runtime Architecture
+
+## Production process model
+
+In production, the system runs as three process types:
+
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  API Server      │     │  Celery Workers  │     │  MORK CLI        │
+│  (Gunicorn +     │     │  (4 processes)   │     │  Container       │
+│   Uvicorn)       │     │                  │     │                  │
+│  4 workers       │     │  Queue: Redis DB1│     │  Docker-in-Docker│
+│  Port: 8000      │     │  State: Redis DB0│     │                  │
+└────────┬─────────┘     └────────┬─────────┘     └─────────────────┘
+         │                        │
+         │     Redis :6379        │
+         ├────────────────────────┤
+         │                        │
+         ▼                        ▼
+    ┌──────────┐           ┌──────────┐
+    │  MongoDB  │           │  Neo4j    │  (if cypher backend)
+    └──────────┘           └──────────┘
+```
+
+**API server:** Gunicorn manages 4 Uvicorn worker processes. The ASGI application (`app.main:socket_app`) handles both HTTP (FastAPI) and WebSocket (Socket.IO) traffic.
+
+**Celery workers:** 4 concurrent worker processes, restarting every 50 tasks. The `celery_worker` service connects to the same Redis instance for broker and backend.
+
+**MORK CLI:** Runs in a separate container on the host, accessed via Docker-in-Docker from the API server.
+
+## Caddy reverse proxy
+
+In production, Caddy sits in front of the API server on port 5000, providing automatic HTTPS and request routing:
+
+```
+Caddy (:5000) → annotation_service (:APP_PORT)
+```
+
+## Development mode
+
+In development, you can run directly with uvicorn:
+
+```bash
+uvicorn app.main:socket_app --reload --port 8000
+```
+
+The `--reload` flag enables hot-reloading on code changes. No Caddy is needed.
+
+## Startup sequence
+
+1. Redis and MongoDB start (external dependencies)
+2. FastAPI app starts → `lifespan` handler connects to Redis pub/sub
+3. SchemaManager loads YAML configs
+4. API router is mounted
+5. Socket.IO server is wrapped as ASGI app
+6. Celery workers start and connect to Redis broker
+7. MORK CLI container must be running (if configured)
+
+## Process management
+
+- **Gunicorn** manages the Uvicorn worker pool with `--workers 4 --worker-class uvicorn.workers.UvicornWorker`
+- **Celery** manages its own worker pool with `--concurrency 4 --max-tasks-per-child 50`
+- **Docker Compose** manages container lifecycle via `restart: always`
+- **Kubernetes** (staging) manages pod replica count and health checks
+
+## What to read next
+
+- [Docker and Compose](/docs/operations/docker-and-compose)
+- [Logging and Monitoring](/docs/operations/logging-and-monitoring)
+- [Failure Modes](/docs/operations/failure-modes)

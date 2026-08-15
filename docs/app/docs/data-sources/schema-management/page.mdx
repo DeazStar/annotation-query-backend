@@ -1,0 +1,95 @@
+---
+order: 4
+title: Schema Management
+description: How the system loads, caches, and serves graph schema definitions from YAML configs.
+---
+
+# Schema Management
+
+## What it is
+
+The schema management system loads graph schema definitions from YAML configuration files and provides a queryable API for node types, edge types, properties, and relationships.
+
+## Where it lives
+
+**File:** `app/services/schema_data.py` — `SchemaManager` class
+
+## Why it exists
+
+The frontend needs to render query builders dynamically — users need to see available node types, their properties (text field, combobox, location), and the edges connecting them. The `SchemaManager` provides this data without hardcoding schema knowledge in the frontend.
+
+## How it works
+
+At startup, the `SchemaManager`:
+
+1. Reads the top-level schema config file (`config/schema_config.yaml`)
+2. Loads individual data source schema files from `config/schema/`
+3. Reads BioCypher config from `config/biocypher_config.yaml`
+4. Loads fly-specific schema from `config/fly_base_schema/`
+5. Builds an in-memory representation of nodes, edges, and properties
+6. Loads graph metadata from `Data/graph_info.json`
+
+The schema is organized by species (`human` and `fly`) with each species having its own node/edge definitions.
+
+## Schema format
+
+Each data source defines:
+
+```yaml
+nodes:
+  gene:
+    label: Gene
+    properties:
+      name: string
+      type: string
+      chr: string
+      start: integer
+      end: integer
+
+edges:
+  gene_transcript:
+    source: gene
+    target: transcript
+    label: HAS_TRANSCRIPT
+```
+
+## What it provides
+
+The `SchemaManager` exposes:
+
+- `get_nodes()` — all node types per species
+- `get_edges()` — all edge types per species
+- `get_relations_for_node(node_label, species)` — edges connected to a node
+- `schema` / `fly_schema_representation` — full schema dictionaries
+- `graph_info` — counts and metadata
+
+## Configuration structure
+
+```
+config/
+├── schema_config.yaml             # Top-level schema definitions
+├── biocypher_config.yaml          # BioCypher pipeline config
+├── schema/                        # Individual data source schema files
+│   ├── gene.yaml
+│   ├── transcript.yaml
+│   └── ...
+└── fly_base_schema/               # Fly-specific schema files
+    └── net_act_essential_schema_config.yaml
+```
+
+## Dependencies
+
+- YAML config files must be present at the configured paths
+- The `SchemaManager` is instantiated at startup and reused across requests
+
+## Failure modes
+
+- Missing config file → `FileNotFoundError` at startup
+- Malformed YAML → `YAMLError` — system will not start
+- Schema doesn't match actual graph data → frontend shows nodes that don't exist in the backend
+
+## What to read next
+
+- [Graph Endpoints](/docs/api/graph-endpoints)
+- [Configuration Model](/docs/architecture/configuration-model)
+- [Graph Assets and Data Dirs](/docs/data-sources/graph-assets-and-data-dirs)

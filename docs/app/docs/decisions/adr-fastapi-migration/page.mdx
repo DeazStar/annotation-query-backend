@@ -1,0 +1,62 @@
+---
+order: 2
+title: "ADR: FastAPI Migration"
+description: Migrating from Flask to FastAPI for the web framework.
+---
+
+# ADR: FastAPI Migration
+
+**Status:** Implemented
+
+## Context
+
+The original annotation-query-backend was built with Flask. As the system grew, several limitations became apparent:
+
+- Flask's synchronous handler model blocked the event loop during long graph queries
+- No native async support made WebSocket/Socket.IO integration more complex
+- No automatic OpenAPI documentation generation
+- Flask's extension ecosystem for async was less mature
+
+## Decision
+
+Migrate the web framework from Flask to FastAPI while maintaining backward compatibility with existing routes.
+
+### Implementation approach
+
+1. New routes are written as FastAPI endpoint functions in `app/api/api_v1/endpoints/`
+2. The FastAPI app is defined in `app/main.py` with lifespan handlers, middleware, and router mounting
+3. Flask compatibility is maintained via a compatibility layer (`app/__init__.py` still works for legacy paths)
+4. The ASGI application (`socket_app` in `app/main.py`) wraps both FastAPI and Socket.IO
+5. Configuration uses Pydantic's `BaseSettings` for type-safe config loading
+
+### Key files
+
+- `app/main.py` — FastAPI application, lifespan, middleware
+- `app/core/config.py` — Pydantic Settings class
+- `app/api/api_v1/api.py` — API router assembly
+- `app/api/api_v1/endpoints/` — Endpoint modules
+
+## Consequences
+
+**Positive:**
+- Native async support for Redis pub-sub listener (lifespan handlers)
+- Automatic OpenAPI docs at `/docs` and `/redoc`
+- Better performance via ASGI (Uvicorn workers)
+- Simpler WebSocket/Socket.IO integration
+- Type-safe configuration via Pydantic Settings
+
+**Negative:**
+- Codebase has two web frameworks in parallel during migration
+- Some Flask-specific patterns (Flask-Mail, Flask-Limiter) need replacement or adaptation
+- Team needs familiarity with FastAPI patterns
+
+## Alternatives considered
+
+1. **Stay on Flask** — rejected due to growing async requirements
+2. **Use Quart** (async Flask) — rejected due to smaller ecosystem and community
+3. **Rewrite in Node.js/Go** — rejected due to existing Python codebase and team expertise
+
+## What to read next
+
+- [System Overview](/docs/architecture/system-overview)
+- [Request Lifecycle](/docs/architecture/request-lifecycle)

@@ -1,0 +1,47 @@
+---
+order: 2
+title: Code Reading Guide
+description: How to navigate the codebase efficiently.
+---
+
+# Code Reading Guide
+
+## Entry points
+
+Start here depending on what you're trying to understand:
+
+| Goal | Start at |
+|------|----------|
+| Understand the app startup | `app/main.py` — FastAPI app, lifespan, middleware |
+| Find all API routes | `app/api/api_v1/api.py` — router assembly |
+| Understand a specific endpoint | `app/api/api_v1/endpoints/<name>.py` |
+| Understand Celery tasks | `app/workers/task_handler.py` |
+| Understand the config model | `app/core/config.py` |
+| Understand a backend generator | `app/services/<name>_generator.py` |
+| Understand schema loading | `app/services/schema_data.py` |
+| Understand MongoDB models | `app/models/<name>.py` |
+| Understand storage operations | `app/persistence/<name>.py` |
+
+## Reading order for new contributors
+
+1. `app/main.py` — how the app boots
+2. `app/api/api_v1/endpoints/query.py` — the most important endpoints
+3. `app/workers/task_handler.py` — how async tasks work
+4. `app/services/cypher_generator.py` (or `mork_cli_generator.py`) — how queries execute
+5. `app/annotation_controller.py` — orchestration logic
+6. `app/core/config.py` — configuration model
+7. `app/persistence/annotation_storage_service.py` — data persistence
+
+## Code navigation tips
+
+- **Config loading:** Trace from `config/config.yaml` → `app/core/config.py` → `Settings.DATABASE_TYPE` via `@field_validator`
+- **Backend resolution:** Trace from `config.yaml` → `db_instance` factory → `app/services/*_generator.py`
+- **Realtime event flow:** Trace from worker → Redis pub-sub (`socket_event`) → FastAPI lifespan → Socket.IO → browser
+- **Auth flow:** Trace from `Authorization` header → `app/lib/auth.py` `token_required` → JWT decode → `current_user_id`
+- **Task cancellation:** Trace from `POST /cancel` → Redis cancel key → worker check → `ThreadStopException`
+
+## What to read next
+
+- [Project Map](/docs/getting-started/project-map)
+- [Key Files](/docs/reference/key-files)
+- [How to Update Docs](/docs/contributing/how-to-update-docs)

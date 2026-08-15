@@ -1,0 +1,70 @@
+---
+order: 2
+title: Test Layout
+description: Test directory structure and how to run tests.
+---
+
+# Test Layout
+
+## Directory structure
+
+```
+tests/
+├── __init__.py
+├── conftest.py              # Shared pytest fixtures
+├── integration/             # Integration tests (end-to-end)
+│   └── test_*.py
+├── unit/                    # Unit tests (isolated)
+│   └── test_*.py
+└── lib/                     # Test utility code
+    └── *.py
+```
+
+## Running tests
+
+```bash
+# Run all tests
+pytest tests/
+
+# Run with verbose output
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/unit/test_query.py
+
+# Run integration tests only
+pytest tests/integration/
+
+# Run with coverage
+pytest tests/ --cov=app
+```
+
+## Prerequisites for running tests
+
+- Python virtual environment with `requirements.txt` installed
+- MongoDB running (for integration tests)
+- Redis running (for integration tests)
+- `.env` file with valid configuration (test values are acceptable)
+
+## Test configuration
+
+The `conftest.py` fixture `wait_for_db_connection()` sleeps 3 seconds at session start to allow database connections to establish. Logging is suppressed during test runs to reduce noise.
+
+## Adding new tests
+
+1. Create a test file in the appropriate directory (`unit/` or `integration/`)
+2. Use the shared fixtures from `conftest.py` where applicable
+3. Follow the existing naming convention: `test_<module_name>.py`
+4. For endpoint tests, use the `client()` fixture:
+   ```python
+   def test_health_endpoint(client):
+       response = client.get("/api/v1/health")
+       assert response.status_code == 200
+       assert response.json() == {"status": "ok"}
+   ```
+
+## What to read next
+
+- [Test Strategy](/docs/testing/test-strategy)
+- [Local CI Workflow](/docs/testing/local-ci-workflow)
+- [Change Checklist](/docs/contributing/change-checklist)

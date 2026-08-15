@@ -1,0 +1,63 @@
+---
+order: 3
+title: "ADR: Celery Workers"
+description: Using Celery for asynchronous background task execution.
+---
+
+# ADR: Celery Workers
+
+**Status:** Implemented
+
+## Context
+
+Graph queries against large biomedical datasets can take seconds to minutes. Running these synchronously in the HTTP request handler would:
+
+- Block the worker process from serving other requests
+- Cause frontend timeouts for long-running queries
+- Prevent horizontal scaling of query execution
+- Make it impossible to cancel in-flight queries
+
+## Decision
+
+Use Celery as the distributed task queue for all asynchronous graph query execution.
+
+### Architecture
+
+- Celery app defined in `app/workers/celery_app.py` with Redis broker (DB 1) and result backend (DB 0)
+- Task functions defined in `app/workers/task_handler.py`
+- The `run_query`, `run_batch_query`, and `process_vcf` tasks are the main entry points
+- API endpoints submit tasks via `task.delay(...)` and return immediately with a task ID
+- Workers run as a separate Docker Compose service with 4 concurrency and 50 max tasks per child
+- Progress is reported via Redis pub-sub (see [Redis Event Bridge ADR](/docs/decisions/adr-redis-event-bridge))
+
+### Key files
+
+- `app/workers/celery_app.py` — Celery app instance
+- `app/workers/task_handler.py` — Task definitions and Redis state helpers
+- `app/services/task_service.py` — Task submission helpers
+
+## Consequences
+
+**Positive:**
+- API remains responsive during long queries
+- Workers scale independently of the API server
+- Task retries, cancellation, and progress reporting are built in
+- Workers are isolated — a crash doesn't affect the API
+
+**Negative:**
+- Increased operational complexity (need to manage worker processes)
+- Redis becomes a critical dependency (both broker and backend)
+- Task state management requires careful handling of race conditions
+
+## Alternatives considered
+
+1. **Python threading** — rejected due to GIL limitations and complexity of thread safety
+2. **Python multiprocessing** — rejected due to shared state complexity and process management
+3. **Redis Queue (RQ)** — rejected due to fewer features compared to Celery (no task scheduling, limited result backend)
+4. **In-process async with asyncio** — rejected because it still blocks the event loop for CPU-intensive graph operations
+
+## What to read next
+
+- [Celery Overview](/docs/workers/celery-overview)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Redis Event Bridge ADR](/docs/decisions/adr-redis-event-bridge)

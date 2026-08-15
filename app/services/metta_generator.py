@@ -4,6 +4,7 @@ from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
 from .metta import Metta_Ground, metta_seralizer
+
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -14,6 +15,8 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         self.dataset_path = dataset_path
         self.load_dataset(self.dataset_path)
         self.initialize_grounatoms()
+        from app.lib.result_formatter import Result_Formatter
+        self.formatter = Result_Formatter()
 
     def initialize_space(self):
         self.metta.run("!(bind! &space (new-space))")
@@ -189,198 +192,13 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):
         if result_type == 'graph':
-
-            result = self.prepare_query_input(input, schema)
-            
-            result = self.parse_and_serialize_properties(result, graph_components, result_type)
-            return result
-        else:
-            (_,_,_,_, meta_data) = self.process_result(input, graph_components, result_type)
-            return {
-                "node_count": meta_data.get('node_count', 0),
-                "edge_count": meta_data.get('edge_count', 0),
-                "node_count_by_label": meta_data.get('node_count_by_label', []),
-                "edge_count_by_label": meta_data.get('edge_count_by_label', []),
-            }
+            input = self.prepare_query_input(input, schema) # Now returns (results, identifiers)
+        return self.formatter.format_result(input, "metta", graph_components, result_type)
         
-    def parse_and_serialize_properties(self, input, graph_components, result_type):
-        (nodes, edges, _, _, meta_data) = self.process_result(input, graph_components, result_type)
-        return {"nodes": nodes[0], "edges": edges[0],
-                "node_count": meta_data.get('node_count', 0),
-                "edge_count": meta_data.get('edge_count', 0),
-                "node_count_by_label": meta_data.get('node_count_by_label', []),
-                "edge_count_by_label": meta_data.get('edge_count_by_label', [])
-        }
-
-    def get_node_properties(self, results, schema):
-        metta = ('''!(match &space (,''')
-        output = (''' (,''') 
-        nodes = set()
-        for result in results:
-            source = result['source']
-            source_node_type = result['source'].split(' ')[0]
-
-            if source not in nodes:
-                for property, _ in schema[source_node_type]['properties'].items():
-                    id = self.generate_id()
-                    metta += " " + f'({property} ({source}) ${id})'
-                    output += " " + f'(node {property} ({source}) ${id})'
-                nodes.add(source)
-
-            if "target" in result and "predicate" in result:
-                target = result['target']
-                target_node_type = result['target'].split(' ')[0]
-                if target not in nodes:
-                    for property, _ in schema[target_node_type]['properties'].items():
-                        id = self.generate_id()
-                        metta += " " + f'({property} ({target}) ${id})'
-                        output += " " + f'(node {property} ({target}) ${id})'
-                    nodes.add(target)
-
-                predicate = result['predicate']
-                predicate_schema = f'{source_node_type}_{predicate}_{target_node_type}'
-                for property, _ in schema[predicate_schema]['properties'].items():
-                    random = self.generate_id()
-                    metta += " " + f'({property} ({predicate} ({source}) ({target})) ${random})'
-                    output +=  " " + f'(edge {property} ({predicate} ({source}) ({target})) ${random})' 
-
-        metta+= f" ) {output}))"
-        return metta
-
     def convert_to_dict(self, results, schema=None):
         result = self.prepare_query_input(results, schema)
-        (_, node_dict, edge_dict) = self.process_result(result[0], True)
-        return (node_dict, edge_dict)
-
-    # Won't work because of we don't try to parse node count and count by labels
-    def process_result(self, results, graph_components, result_type):
-        node_and_edge_count = {}
-        count_by_label = {}
-        nodes = []
-        edges = []
-        node_to_dict = {}
-        edge_to_dict = {}
-        meta_data = {}
-
-        if result_type == 'graph':
-            nodes, edges, node_to_dict, edge_to_dict = self.process_result_graph(
-                    results[0], graph_components)
-
-        if result_type == 'count':
-            if len(results) > 0:
-                node_and_edge_count = results[0]
-
-            if len(results) > 1:
-                count_by_label = results[1]
-
-            meta_data = self.process_result_count(
-                node_and_edge_count, count_by_label, graph_components)
-
-        return (nodes, edges, node_to_dict, edge_to_dict, meta_data)
-        
-    def process_result_graph(self, results, graph_components):
-        nodes = {}
-        relationships_dict = {}
-        node_result = []
-        edge_result = []
-        node_to_dict = {}
-        edge_to_dict = {}
-        node_type = set()
-        edge_type = set()
-        tuples = metta_seralizer(results)
-        named_types = ['gene_name', 'transcript_name', 'protein_name',
-                       'pathway_name', 'term_name']
-
-        for match in tuples:
-            graph_attribute = match[0]
-            match = match[1:]
-
-            if graph_attribute == "node":
-                if len(match) > 4:
-                    predicate = match[0]
-                    src_type = match[1]
-                    src_value = match[2]
-                    tgt = list(match[3:])
-                else:
-                    predicate, src_type, src_value, tgt = match
-                if (src_type, src_value) not in nodes:
-                    nodes[(src_type, src_value)] = {
-                        "id": f"{src_type} {src_value}",
-                        "type": src_type,
-                    }
-                
-                if graph_components['properties']:
-                     nodes[(src_type, src_value)][predicate] = tgt
-                else:
-                    if predicate in named_types:
-                        nodes[(src_type, src_value)]['name'] = tgt
-
-                if 'synonyms' in nodes[(src_type, src_value)]:
-                    del nodes[(src_type, src_value)]['synonyms']
-                if src_type not in node_type:
-                    node_type.add(src_type)
-                    node_to_dict[src_type] = []
-                node_data = {}
-                node_data["data"] = nodes[(src_type, src_value)]
-                node_to_dict[src_type].append(node_data)
-            elif graph_attribute == "edge":
-                property_name, predicate, source, source_id, target, target_id = match[:6]
-                value = ' '.join(match[6:])
-
-                key = (predicate, source, source_id, target, target_id)
-                if key not in relationships_dict:
-                    relationships_dict[key] = {
-                        "edge_id": f'{source}_{predicate}_{target}',
-                        "label": predicate,
-                        "source": f"{source} {source_id}",
-                        "target": f"{target} {target_id}",
-                    }
-                
-                if property_name == "source":
-                    relationships_dict[key]["source_data"] = value
-                else:
-                    relationships_dict[key][property_name] = value
-                
-                if predicate not in edge_type:
-                    edge_type.add(predicate)
-                    edge_to_dict[predicate] = []
-                edge_data = {}
-                edge_data['data'] = relationships_dict[key]
-                edge_to_dict[predicate].append(edge_data)
-        node_list = [{"data": node} for node in nodes.values()]
-        relationship_list = [{"data": relationship} for relationship in relationships_dict.values()]
-
-        node_result.append(node_list)
-        edge_result.append(relationship_list)
-        return (node_result, edge_result, node_to_dict, edge_to_dict)
-    
-    def process_result_count(self, node_and_edge_count, count_by_label, graph_components):
-        if len(node_and_edge_count) != 0:
-            node_and_edge_count = node_and_edge_count[0].get_object().value
-        node_count_by_label = []
-        edge_count_by_label = []
-        
-        if len(count_by_label) != 0:
-            count_by_label = count_by_label[0].get_object().value
-            node_label_count = count_by_label['node_label_count']
-            edge_label_count = count_by_label['edge_label_count']
-
-            # update the way node count by label and edge count by label are represented
-            for key, value in node_label_count.items():
-                node_count_by_label.append(
-                    {'label': key, 'count': value['count']}) 
-            for key, value in edge_label_count.items():
-                edge_count_by_label.append(
-                    {'label': key, 'count': value['count']})
-            
-        meta_data = {
-            "node_count": node_and_edge_count.get('total_nodes', 0),
-            "edge_count": node_and_edge_count.get('total_edges', 0),
-            "node_count_by_label": node_count_by_label if node_count_by_label else [],
-            "edge_count_by_label": edge_count_by_label if edge_count_by_label else []
-        }
-        
-        return meta_data
+        res = self.formatter.format_result(result, "metta", {"properties": True}, result_type='graph')
+        return (res['nodes'], res['edges'])
 
     def prepare_query_input(self, inputs, schema):
         result = []
@@ -402,8 +220,8 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                     "target": f"{tgt_type} {tgt_id}"
                     })
         query = self.get_node_properties(result, schema)
-        result = self.run_query(query)
-        return result
+        res = self.run_query(query)
+        return res, result
 
     def parse_id(self, request):
         nodes = request["nodes"]

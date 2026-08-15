@@ -1,0 +1,72 @@
+---
+order: 3
+title: Change Checklist
+description: What to verify before submitting a pull request.
+---
+
+# Change Checklist
+
+## Before submitting a PR
+
+### Code
+
+- [ ] Does the code follow existing patterns in the codebase?
+- [ ] Are imports clean (no unused imports, no circular imports)?
+- [ ] Are error cases handled (try/except with logging)?
+- [ ] Are security-sensitive values (secrets, tokens) not logged or exposed?
+- [ ] Is the change backward compatible? If not, is a migration path documented?
+
+### Testing
+
+- [ ] Are new features covered by unit or integration tests?
+- [ ] Do existing tests still pass? (`pytest tests/`)
+- [ ] Have you run the local CI script? (`./run_ci_local.sh`)
+- [ ] Are edge cases tested (empty results, missing fields, invalid input)?
+
+### API changes
+
+- [ ] Are new endpoints documented in the OpenAPI schema? (automatic with FastAPI)
+- [ ] Are request/response models defined as Pydantic schemas?
+- [ ] Are auth requirements applied to new endpoints?
+- [ ] Is the change reflected in the API docs pages?
+
+### Configuration
+
+- [ ] Are new environment variables documented in `environment-and-secrets`?
+- [ ] Are new config.yaml fields documented in `configuration-model`?
+- [ ] Is `.env.example` updated?
+
+### Documentation
+
+- [ ] Are relevant MDX pages updated in `docs/app/docs/`?
+- [ ] Are ADRs updated if the change affects a past architectural decision?
+- [ ] Are failure modes documented if the change introduces new edge cases?
+- [ ] Is the project map updated if directory structure changed?
+
+### Operations
+
+- [ ] Does the change affect Docker Compose services or environment variables?
+- [ ] Are there any migration steps for existing deployments?
+- [ ] Do logging/monitoring changes need Sentry updates?
+
+### Commit
+
+- [ ] Is the commit message descriptive?
+- [ ] Are code and docs changes in the same commit/PR?
+- [ ] Are secrets or API keys excluded from the commit?
+
+## Review flow
+
+1. Self-review against this checklist
+2. Run `./run_ci_local.sh`
+3. Push to your feature branch
+4. Open a PR against `main`
+5. Request review from a maintainer
+6. Address review feedback
+7. Merge after approval
+
+## What to read next
+
+- [How to Update Docs](/docs/contributing/how-to-update-docs)
+- [Local CI Workflow](/docs/testing/local-ci-workflow)
+- [Test Strategy](/docs/testing/test-strategy)

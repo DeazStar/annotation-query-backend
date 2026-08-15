@@ -1,0 +1,103 @@
+---
+order: 3
+title: Key Files
+description: Important files in the codebase and what they do.
+---
+
+# Key Files
+
+## Application entry and config
+
+| File | Purpose |
+|------|---------|
+| `app/main.py` | FastAPI application creation, lifespan handlers, Socket.IO mount |
+| `app/__init__.py` | Flask app initialization (legacy, being phased out) |
+| `app/core/config.py` | Pydantic Settings — loads `.env` + `config.yaml` |
+| `app/constants.py` | Enums (TaskStatus, Species), form field definitions, hard limits |
+| `app/error.py` | Custom exception classes (ThreadStopException) |
+| `app/annotation_controller.py` | Query orchestration logic |
+
+## API layer
+
+| File | Purpose |
+|------|---------|
+| `app/api/api_v1/api.py` | Router assembly — imports endpoint modules, defines /health |
+| `app/api/api_v1/endpoints/graph.py` | Schema, nodes, edges, graph-info endpoints |
+| `app/api/api_v1/endpoints/query.py` | Search, count, annotation CRUD, cancel, VCF upload |
+| `app/api/api_v1/endpoints/annotation_sharing.py` | Share/unshare endpoints |
+
+## Services and business logic
+
+| File | Purpose |
+|------|---------|
+| `app/services/schema_data.py` | SchemaManager — loads YAML configs, serves schema |
+| `app/services/cypher_generator.py` | CypherQueryGenerator — Neo4j query builder |
+| `app/services/metta_generator.py` | MeTTa_Query_Generator — hyperon-based engine |
+| `app/services/mork_cli_generator.py` | MorkQueryGenerator — MORK CLI wrapper |
+| `app/services/llm_handler.py` | LLM routing (OpenAI / Gemini) |
+| `app/services/task_service.py` | Celery task submission helpers |
+
+## Workers
+
+| File | Purpose |
+|------|---------|
+| `app/workers/celery_app.py` | Celery app instance configuration |
+| `app/workers/task_handler.py` | Celery task definitions: `run_query`, `run_batch_query`, `process_vcf` |
+
+## Persistence and models
+
+| File | Purpose |
+|------|---------|
+| `app/models/annotation.py` | Annotation ODM model |
+| `app/models/user.py` | User ODM model |
+| `app/models/shared_annotation.py` | SharedAnnotation ODM model |
+| `app/persistence/annotation_storage_service.py` | Annotation CRUD |
+| `app/persistence/user_storage_service.py` | User CRUD |
+| `app/persistence/shared_annotation_storage_service.py` | SharedAnnotation CRUD |
+| `db.py` | MongoDB connection initialization |
+
+## Realtime
+
+| File | Purpose |
+|------|---------|
+| `app/socketio/server.py` | Socket.IO AsyncServer instance |
+| `app/events/socket_event.py` | Socket.IO event handlers |
+
+## Library
+
+| File | Purpose |
+|------|---------|
+| `app/lib/auth.py` | JWT `token_required` and `socket_token_required` decorators |
+| `app/lib/email.py` | Flask-Mail integration |
+| `app/lib/query_canonical.py` | Query fingerprinting for caching |
+| `app/lib/validator.py` | Request validation |
+| `app/lib/utils.py` | CSV/TSV/Excel conversion |
+| `app/lib/graph.py` | Graph data structures |
+| `app/lib/heuristic_sort.py` | Result sorting |
+| `app/lib/limit_graph.py` | Result limiting |
+
+## Configuration
+
+| File | Purpose |
+|------|---------|
+| `config/config.yaml` | Database type selection, data paths |
+| `config/schema_config.yaml` | Schema definitions |
+| `config/biocypher_config.yaml` | BioCypher pipeline config |
+| `config/schema/` | Individual data source schema files |
+| `config/fly_base_schema/` | Fly-specific schema configs |
+
+## Infrastructure
+
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Container image definition |
+| `docker-compose.yml` | Full stack orchestration |
+| `requirements.txt` | Python dependencies |
+| `logger.py` | Logging configuration |
+| `run.sh` | Docker lifecycle script |
+| `run_ci_local.sh` | Local CI simulation |
+
+## What to read next
+
+- [Project Map](/docs/getting-started/project-map)
+- [Code Reading Guide](/docs/contributing/code-reading-guide)

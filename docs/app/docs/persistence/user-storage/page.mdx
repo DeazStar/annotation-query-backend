@@ -1,0 +1,47 @@
+---
+order: 3
+title: User Storage
+description: CRUD operations for user preferences.
+---
+
+# User Storage
+
+## Where it lives
+
+**File:** `app/persistence/user_storage_service.py` — `UserStorageService` class
+
+## What it does
+
+Manages user preference records — primarily species selection (`human` or `fly`) and default data source.
+
+## Key operations
+
+### `save(user)`
+
+Creates a new user document from a dict.
+
+### `get(user_id)`
+
+Fetches a user document by `user_id`. Returns `None` if not found.
+
+When a user is not found, the system defaults to `species='human'` and proceeds without error. This makes the user storage service optional for basic query functionality.
+
+### `upsert_by_user_id(id, data)`
+
+Creates or updates a user document. If a document with the given `user_id` exists, it updates the fields. Otherwise, it creates a new document.
+
+Used by preference-setting endpoints.
+
+### `delete(id)`
+
+Deletes a user document by MongoDB ID.
+
+## Usage in the system
+
+- **Schema endpoints** (`/nodes`, `/edges`, etc.) call `UserStorageService.get(current_user_id)` to determine the species filter.
+- **Query endpoints** use species preference to route to the correct graph data.
+
+## What to read next
+
+- [MongoDB Models](/docs/persistence/mongodb-models)
+- [Graph Endpoints](/docs/api/graph-endpoints)

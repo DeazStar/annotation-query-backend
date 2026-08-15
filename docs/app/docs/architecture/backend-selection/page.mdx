@@ -1,0 +1,82 @@
+---
+order: 5
+title: Backend Selection
+description: How the system supports multiple graph query engines via config-driven selection.
+---
+
+# Backend Selection
+
+## Why multiple backends exist
+
+The system evolved through different graph storage technologies:
+
+- **Cypher (Neo4j)** — the original backend, suitable for small-to-medium graphs with standard graph DB features.
+- **MeTTa** — an experimental backend using the hyperon MeTTa runtime, developed for research use cases.
+- **MORK CLI** — the current production-recommended backend. Wraps a compiled C++ binary in Docker, providing the best performance on large biomedical graphs.
+
+The config-driven architecture allows switching between backends without code changes and enables incremental migration.
+
+## How selection works
+
+### Startup
+
+In `app/main.py` (FastAPI) or `app/__init__.py` (Flask legacy), the system:
+
+1. Loads `config/config.yaml` via the `Settings` Pydantic model (`app/core/config.py`).
+2. Reads `database.type` from the config dict.
+3. The validated settings object has a `DATABASE_TYPE` dict that includes `type` plus nested backend-specific config.
+
+### Backend factory
+
+A generator factory maps the type string to a generator class:
+
+```python
+databases = {
+    "metta": lambda: MeTTa_Query_Generator("./Data"),
+    "cypher": lambda: CypherQueryGenerator("./cypher_data"),
+    "mork": lambda: MorkQueryGenerator("./mork_data"),
+}
+database_type = config['database']['type']
+db_instance = databases[database_type]()
+```
+
+The selected instance is stored as `app.config['db_type']` (Flask) or accessed via dependency injection (FastAPI) and used by all query endpoints and Celery tasks.
+
+## Backend comparison
+
+| Feature | Cypher (Neo4j) | MeTTa | MORK CLI |
+|---------|----------------|-------|----------|
+| Engine | Neo4j graph DB | hyperon MeTTa | Compiled C++ binary |
+| Data format | Neo4j nodes/rels | MeTTa files | MORK binary format |
+| Query language | Cypher | MeTTa | MORK CLI commands |
+| Performance | Moderate | Slow (interpreted) | Fast (compiled) |
+| Scalability | Limited by Neo4j instance | Limited by memory | Large graphs (>10M nodes) |
+| Production readiness | Legacy | Experimental | Recommended |
+| Docker requirement | No | No | Yes (Docker-in-Docker) |
+
+## Configuration example
+
+```yaml
+# config/config.yaml
+database:
+  type: mork_cli          # cypher, metta, or mork_cli
+  human:
+    data_dir: /mnt/hdd_1/biocypher-kg/output/hsa/metta_out_v6
+    act_file: human_v6.act
+    graph_info_path: ./Data/graph_info.json
+```
+
+For `mork_cli`, the system uses Docker-in-Docker to run the MORK CLI container. The `MORK_CLI_README.md` in the repo root documents the build and data preparation steps.
+
+## Where backends are used
+
+- **API endpoints** (`app/api/api_v1/endpoints/query.py`) — sync queries use the generator directly.
+- **Celery tasks** (`app/workers/task_handler.py`) — async queries instantiate the generator in the worker.
+- **Schema endpoints** — the `SchemaManager` is backend-independent; it reads YAML configs regardless of query engine.
+
+## What to read next
+
+- [Cypher Backend](/docs/data-sources/cypher-backend)
+- [MeTTa Backend](/docs/data-sources/metta-backend)
+- [MORK CLI Backend](/docs/data-sources/mork-cli-backend)
+- [Configuration Model](/docs/architecture/configuration-model)

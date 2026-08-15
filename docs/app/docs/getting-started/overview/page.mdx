@@ -1,0 +1,61 @@
+---
+order: 1
+title: Overview
+description: What this system is, why it exists, and the stack it uses.
+---
+
+# Overview
+
+## What it is
+
+The annotation-query-backend is a Python backend service that lets users query biomedical graph data — genes, transcripts, proteins, pathways, variants, regulatory elements, and more — across multiple species (human and fly). It generates and executes graph queries, stores annotation history, and streams realtime progress to the frontend.
+
+## Why it exists
+
+Biomedical researchers need to explore complex, multi-source graph data (Neo4j, MeTTa, MORK) without writing query languages. This service provides a consistent HTTP and WebSocket API that abstracts over three different backend engines, handles async computation for expensive graph traversals, and persists user session data.
+
+## Tech stack
+
+| Component | Technology |
+|-----------|-----------|
+| Web framework | FastAPI (migrated from Flask) |
+| Async workers | Celery with Redis broker |
+| State / pub-sub | Redis |
+| Database | MongoDB via pymongoose ODM |
+| Realtime | python-socketio |
+| Graph engines | Cypher (Neo4j), MeTTa, MORK CLI |
+| Auth | JWT via PyJWT |
+| Search | Elasticsearch (optional) |
+| Error tracking | Sentry |
+| Containerization | Docker + Docker Compose |
+| Production server | Gunicorn + Uvicorn workers |
+
+## Where it lives
+
+**Repository:** `rejuve-bio/annotation-query-backend`  
+**Entrypoint:** `app/main.py` — creates the FastAPI `app`, sets up lifespan handlers, mounts Socket.IO, includes the API router.  
+**Configuration:** `config/config.yaml` selects the active backend. Environment variables in `.env` supply secrets and URIs.  
+**Docs:** `/docs` route in the same repo, built with `@farming-labs/docs` on Next.js.
+
+## Inputs and outputs
+
+**Inputs:** HTTP requests from a web frontend (or API clients) carrying JSON payloads with graph query parameters, JWT bearer tokens, and optional file uploads (VCF).  
+**Outputs:** JSON responses with graph data (nodes, edges, counts), annotation records, schema definitions, and realtime Socket.IO events for long-running tasks.
+
+## Dependencies
+
+- **Runtime:** Python 3.10, Neo4j (for cypher backend), MeTTa runtime (for metta backend), Docker (for MORK CLI), Redis, MongoDB
+- **Python packages:** fastapi, uvicorn, gunicorn, celery, redis, pymongoose, pyjwt, python-socketio, pydantic-settings, biocypher, neo4j, elasticsearch, sentry-sdk
+
+## Failure modes
+
+- Backend engine not configured or unreachable → API returns 500
+- Redis down → Celery tasks fail, realtime updates break
+- MongoDB unreachable → annotation persistence fails
+- Large queries exceeding `QUERY_MAX_NODES` (200k) → truncated or rejected
+
+## What to read next
+
+- [System Overview](/docs/architecture/system-overview)
+- [Local Development](/docs/getting-started/local-development)
+- [Backend Selection](/docs/architecture/backend-selection)

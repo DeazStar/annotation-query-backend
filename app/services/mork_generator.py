@@ -9,19 +9,61 @@ from dotenv import load_dotenv
 import time
 import datetime
 
+from resilience.circuit_breaker import CircuitBreaker
+from resilience.exceptions import classify_database_exception
+from resilience.executor import execute_with_resilience
+from resilience.retry_policy import get_retry_policy
+
 load_dotenv()
 
+from app.error import is_mork_transient
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+import pybreaker
+
+# Resilience Configuration
+MORK_RETRY_ATTEMPTS = int(os.getenv("MORK_RETRY_ATTEMPTS", 5))
+MORK_RETRY_MIN_WAIT = int(os.getenv("MORK_RETRY_MIN_WAIT", 1))
+MORK_RETRY_MAX_WAIT = int(os.getenv("MORK_RETRY_MAX_WAIT", 10))
+MORK_BREAKER_FAIL_MAX = int(os.getenv("MORK_BREAKER_FAIL_MAX", 5))
+MORK_BREAKER_RESET_TIMEOUT = int(os.getenv("MORK_BREAKER_RESET_TIMEOUT", 30))
+
+def exclude_non_transient(e):
+    return not is_mork_transient(e)
+
+mork_breaker = pybreaker.CircuitBreaker(
+    fail_max=MORK_BREAKER_FAIL_MAX, 
+    reset_timeout=MORK_BREAKER_RESET_TIMEOUT,
+    exclude=[exclude_non_transient]
+)
 class MorkQueryGenerator:
     def __init__(self, dataset_path):
+        cb_threshold = int(os.getenv("MORK_CB_THRESHOLD", os.getenv("NEO4J_CB_THRESHOLD", "3")))
+        cb_recovery = float(os.getenv("MORK_CB_RECOVERY_TIMEOUT", os.getenv("NEO4J_CB_RECOVERY_TIMEOUT", "30")))
+        self._circuit_breaker = CircuitBreaker(
+            threshold=cb_threshold, recovery_timeout=cb_recovery
+        )
+        self._retry_policy = get_retry_policy()
         self.server = self.connect()
         self.metta = MeTTa()
+        from app.lib.result_formatter import Result_Formatter
+        self.formatter = Result_Formatter()
         # self.clear_space()
         # self.load_dataset(dataset_path)
 
+    def _init_driver_with_cb(self):
+        circuit_breaker = self._circuit_breaker
+        retry_no_jitter = get_retry_policy(with_jitter=False)
+        def _operations():
+            try:
+                mork_url = os.getenv('MORK_URL')
+                server = ManagedMORK.connect(url=mork_url)
+                return server
+            except Exception as exc:
+                raise classify_database_exception(exc,backend='mork') from exc
+        return execute_with_resilience(_operations, circuit_breaker=circuit_breaker,retry_policy=retry_no_jitter)
     def connect(self):
-        mork_url = os.getenv('MORK_URL')
-        server = ManagedMORK.connect(url=mork_url)
-        return server
+        return self._init_driver_with_cb()
+    
 
     def clear_space(self):
         self.server.clear()
@@ -52,6 +94,13 @@ class MorkQueryGenerator:
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
+    @mork_breaker
+    @retry(
+        stop=stop_after_attempt(MORK_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=MORK_RETRY_MIN_WAIT, max=MORK_RETRY_MAX_WAIT),
+        retry=retry_if_exception(is_mork_transient),
+        reraise=True
+    )
     def run_query(self, query, stop_event=None, species='human'):
         with app.config["annotation_lock"]:
             start_time = time.time()
@@ -63,11 +112,9 @@ class MorkQueryGenerator:
                 result = annotation.download("(tmp $x)", "($x)")
                 with annotation.work_at("tmp") as tmp:
                     tmp.clear()
-            
+
             metta_result = self.metta.parse_all(result.data)
-            # Success log
-            duration = (time.time() - start_time) * 1000 # in ms
-            
+            duration = (time.time() - start_time) * 1000
             perf_logger.info(
                 "Query executed",
                 extra={
@@ -75,11 +122,24 @@ class MorkQueryGenerator:
                     "timestamp": timestamp,
                     "duration_ms": duration,
                     "species": species,
-                    "status": "success"
-                }
+                    "status": "success",
+                },
             )
             print("RES: ", metta_result, flush=True)
             return [metta_result]
+
+    def run_query(self, query, stop_event=None, species='human'):
+        def _operation():
+            try:
+                return self._run_query_once(query, stop_event, species)
+            except Exception as exc:
+                raise classify_database_exception(exc, backend="mork") from exc
+
+        return execute_with_resilience(
+            _operation,
+            self._circuit_breaker,
+            retry_policy=self._retry_policy,
+        )
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
@@ -235,217 +295,14 @@ class MorkQueryGenerator:
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):
         if result_type == 'graph':
-            query, result, prev_result = self.prepare_query_input(input, schema)
-            tuples = metta_seralizer(result[0])
+            _, results, identifiers = self.prepare_query_input(input, schema)
+            input = (results, identifiers)
+        return self.formatter.format_result(input, "mork", graph_components, result_type)
 
-            if not tuples:
-                nodes, edges = self.parse_and_seralize_no_properties(prev_result)
-                return {"nodes": nodes, "edges": edges,
-                        "node_count": 0,
-                        "edge_count": 0,
-                        "node_count_by_label": [],
-                        "edge_count_by_label": []
-                }
-            else:
-                result = self.parse_and_serialize_properties(result, graph_components, result_type)
-            return result
-        else:
-            tt_res = input[0]
-            cbl_res = input[1]
-            meta_data = {}  # Initialize to avoid unbound variable
-
-            if tt_res:
-                meta_data = get_total_counts(input[0])
-
-            if cbl_res:
-                meta_data = get_count_by_label(input[1])
-
-            return {
-                "node_count": meta_data.get('node_count', 0),
-                "edge_count": meta_data.get('edge_count', 0),
-                "node_count_by_label": meta_data.get('node_count_by_label', []),
-                "edge_count_by_label": meta_data.get('edge_count_by_label', []),
-            }
-
-    def parse_and_serialize_properties(self, input, graph_components, result_type):
-        (nodes, edges, _, _, meta_data) = self.process_result(input, graph_components, result_type)
-        return {"nodes": nodes[0], "edges": edges[0],
-                "node_count": meta_data.get('node_count', 0),
-                "edge_count": meta_data.get('edge_count', 0),
-                "node_count_by_label": meta_data.get('node_count_by_label', []),
-                "edge_count_by_label": meta_data.get('edge_count_by_label', [])
-        }
-
-    def parse_and_seralize_no_properties(self, results):
-        nodes = set()
-        edges = []
-
-        for result in results:
-            if len(result) == 0:
-                return [], []
-            source = result.get('source')
-            target = result.get('target')
-            if source:
-                nodes.add(source)
-            if target:
-                nodes.add(target)
-
-            if source and target:
-                source_label = source.split(' ')[0]
-                target_label = target.split(' ')[0]
-                edges.append({
-                    "data": {
-                        "id": self.generate_id(),
-                        "edge_id": f'{source_label}_{result["predicate"]}_{target_label}',
-                        "label": result['predicate'],
-                        "source": source,
-                        "target": target
-                    }
-                })
-
-        nodes_list = []
-
-        for node in nodes:
-            nodes_list.append({
-                "data": {
-                    "id": node,
-                    "type": node.split(' ')[0]
-                }
-            })
-
-        return nodes_list, edges
-
-   # Won't work because of we don't try to parse node count and count by labels
-    def process_result(self, results, graph_components, result_type):
-        node_and_edge_count = {}
-        count_by_label = {}
-        nodes = []
-        edges = []
-        node_to_dict = {}
-        edge_to_dict = {}
-        meta_data = {}
-
-        if result_type == 'graph':
-            nodes, edges, node_to_dict, edge_to_dict = self.process_result_graph(
-                    results[0], graph_components)
-
-        if result_type == 'count':
-            if len(results) > 0:
-                node_and_edge_count = results[0]
-
-            if len(results) > 1:
-                count_by_label = results[1]
-
-            meta_data = self.process_result_count(
-                node_and_edge_count, count_by_label, graph_components)
-
-        return (nodes, edges, node_to_dict, edge_to_dict, meta_data)
-
-    def process_result_graph(self, results, graph_components):
-        nodes = {}
-        relationships_dict = {}
-        node_result = []
-        edge_result = []
-        node_to_dict = {}
-        edge_to_dict = {}
-        node_type = set()
-        edge_type = set()
-        tuples = metta_seralizer(results)
-
-        named_types = ['gene_name', 'transcript_name', 'protein_name',
-                        'pathway_name', 'term_name']
-
-        for match in tuples:
-            graph_attribute = match[0]
-            match = match[1:]
-
-            if graph_attribute == "node":
-                if len(match) > 4:
-                    predicate = match[0]
-                    src_type = match[1]
-                    src_value = match[2]
-                    tgt = list(match[3:])
-                else:
-                    predicate, src_type, src_value, tgt = match
-                if (src_type, src_value) not in nodes:
-                    nodes[(src_type, src_value)] = {
-                        "id": f"{src_type} {src_value}",
-                        "type": src_type,
-                    }
-
-                if graph_components['properties']:
-                     nodes[(src_type, src_value)][predicate] = tgt
-                else:
-                    if predicate in named_types:
-                        nodes[(src_type, src_value)]['name'] = tgt
-
-                if 'synonyms' in nodes[(src_type, src_value)]:
-                    del nodes[(src_type, src_value)]['synonyms']
-
-                if src_type not in node_type:
-                    node_type.add(src_type)
-                    node_to_dict[src_type] = []
-                node_data = {}
-                node_data["data"] = nodes[(src_type, src_value)]
-                node_to_dict[src_type].append(node_data)
-            elif graph_attribute == "edge":
-                property_name, predicate, source, source_id, target, target_id = match[:6]
-                value = ' '.join(match[6:])
-
-                key = (predicate, source, source_id, target, target_id)
-                if key not in relationships_dict:
-                    relationships_dict[key] = {
-                        "edge_id": f'{source}_{predicate}_{target}',
-                        "label": predicate,
-                        "source": f"{source} {source_id}",
-                        "target": f"{target} {target_id}",
-                    }
-
-                if property_name == "source":
-                    relationships_dict[key]["source_data"] = value
-                else:
-                    relationships_dict[key][property_name] = value
-
-                if predicate not in edge_type:
-                    edge_type.add(predicate)
-                    edge_to_dict[predicate] = []
-                edge_data = {}
-                edge_data['data'] = relationships_dict[key]
-                edge_to_dict[predicate].append(edge_data)
-        node_list = [{"data": node} for node in nodes.values()]
-        relationship_list = [{"data": relationship} for relationship in relationships_dict.values()]
-
-        node_result.append(node_list)
-        edge_result.append(relationship_list)
-        return (node_result, edge_result, node_to_dict, edge_to_dict)
-
-    def process_result_count(self, node_and_edge_count, count_by_label, graph_components):
-        if len(node_and_edge_count) != 0:
-            node_and_edge_count = node_and_edge_count[0].get_object().value
-        node_count_by_label = []
-        edge_count_by_label = []
-
-        if len(count_by_label) != 0:
-            count_by_label = count_by_label[0].get_object().value
-            node_label_count = count_by_label['node_label_count']
-            edge_label_count = count_by_label['edge_label_count']
-
-            # update the way node count by label and edge count by label are represented
-            for key, value in node_label_count.items():
-                node_count_by_label.append(
-                    {'label': key, 'count': value['count']})
-            for key, value in edge_label_count.items():
-                edge_count_by_label.append(
-                    {'label': key, 'count': value['count']})
-
-        meta_data = {
-            "node_count": node_and_edge_count.get('total_nodes', 0),
-            "edge_count": node_and_edge_count.get('total_edges', 0),
-            "node_count_by_label": node_count_by_label if node_count_by_label else [],
-            "edge_count_by_label": edge_count_by_label if edge_count_by_label else []
-        }
-
-        return meta_data
+    def convert_to_dict(self, results, schema=None):
+        query, result, prev_result = self.prepare_query_input(results, schema)
+        res = self.formatter.format_result((result, prev_result), "mork", {"properties": True}, result_type='graph')
+        return (res['nodes'], res['edges'])
 
     def parse_id(self, request):
         nodes = request["nodes"]

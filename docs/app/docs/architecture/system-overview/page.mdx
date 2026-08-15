@@ -1,0 +1,110 @@
+---
+order: 1
+title: System Overview
+description: High-level architecture diagram and component interaction.
+---
+
+# System Overview
+
+## Architecture diagram
+
+```
+Frontend (Web UI)
+       │
+       │ HTTP / WebSocket
+       ▼
+┌──────────────────────────────┐
+│         Caddy (prod)         │  Reverse proxy on :5000
+│    or uvicorn (dev) :8000    │
+└──────────┬───────────────────┘
+           │
+           ▼
+┌──────────────────────────────┐
+│  FastAPI (app/main.py)       │
+│  ┌────────────────────────┐  │
+│  │ Lifespan handler       │  │  Redis pub-sub listener
+│  │ → Redis pub/sub        │  │  → forwards to Socket.IO
+│  │ → Signal registration  │  │
+│  └────────────────────────┘  │
+│  ┌────────────────────────┐  │
+│  │ API Router             │  │  /api/v1/graph, /query, /annotation_sharing
+│  │ → Graph endpoints      │  │
+│  │ → Query endpoints      │  │
+│  │ → Share endpoints      │  │
+│  │ → /health              │  │
+│  └────────────────────────┘  │
+│  ┌────────────────────────┐  │
+│  │ Socket.IO (python-sio) │  │  Realtime event push
+│  └────────────────────────┘  │
+└──────┬───────────────────────┘
+       │
+       │ Celery task submission
+       ▼
+┌──────────────────────────────┐
+│  Celery Workers              │
+│  (app/workers/celery_app.py) │
+│  ┌────────────────────────┐  │
+│  │ Task: run_query        │  │  Graph query execution
+│  │ Task: run_batch_query  │  │  Batched node queries
+│  │ Task: process_vcf      │  │  VCF file processing
+│  └────────────────────────┘  │
+│         │                    │
+│         ▼                    │
+│  ┌────────────────────────┐  │
+│  │ Backend Selection      │  │  Config-driven: cypher/metta/mork_cli
+│  │ → CypherQueryGenerator │  │
+│  │ → MeTTa_Query_Generator│  │
+│  │ → MorkQueryGenerator   │  │
+│  └────────────────────────┘  │
+└──────────┬───────────────────┘
+           │
+           │ Redis pub/sub (socket_event channel)
+           ▼
+┌──────────────────────────────┐
+│  Redis                       │
+│  ┌────────────────────────┐  │
+│  │ Task state (key-value) │  │  annotation:{id}:status
+│  │ Pub/Sub socket_event   │  │  Progress → Socket.IO bridge
+│  │ Celery broker (db 1)   │  │  Task queue
+│  │ Celery result backend  │  │  Task results
+│  └────────────────────────┘  │
+└──────────┬───────────────────┘
+           │
+           ▼
+┌──────────────────────────────┐
+│  MongoDB                     │
+│  ┌────────────────────────┐  │
+│  │ annotations collection │  │  Query history + results
+│  │ users collection       │  │  User preferences
+│  │ shared_annotations     │  │  Share records
+│  └────────────────────────┘  │
+└──────────────────────────────┘
+```
+
+## Component summary
+
+| Component | Role | Key file |
+|-----------|------|----------|
+| FastAPI app | HTTP server, lifespan, router | `app/main.py` |
+| API router | Route prefixes and endpoint groups | `app/api/api_v1/api.py` |
+| Socket.IO server | Realtime event push to clients | `app/socketio/server.py` |
+| Redis listener | Lifespan task bridging pub/sub → Socket.IO | `app/main.py` (lifespan) |
+| Celery app | Task definitions and worker pool | `app/workers/celery_app.py` |
+| Task handler | Celery task implementations | `app/workers/task_handler.py` |
+| Schema manager | Loads and serves graph schema | `app/services/schema_data.py` |
+| Backend generators | Backend-specific query building | `app/services/*_generator.py` |
+| Persistence | MongoDB CRUD via pymongoose | `app/persistence/*` |
+
+## Key architectural decisions
+
+- **FastAPI over Flask** — migrated for async support, better performance, automatic OpenAPI docs.
+- **Celery for async tasks** — long graph queries run in worker processes, keeping the HTTP layer responsive.
+- **Redis pub/sub bridge** — Celery tasks publish progress events to Redis; the FastAPI lifespan listener forwards them to Socket.IO rooms.
+- **Config-driven backend selection** — `config.yaml` determines which graph engine is active at startup; no code changes needed to swap.
+- **MORK CLI recommended for production** — wraps the compiled MORK binary in Docker, providing the fastest query performance and largest data handling.
+
+## What to read next
+
+- [Request Lifecycle](/docs/architecture/request-lifecycle)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Backend Selection](/docs/architecture/backend-selection)

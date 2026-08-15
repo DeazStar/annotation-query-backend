@@ -1,0 +1,82 @@
+---
+order: 5
+title: Failure Modes
+description: Known failure scenarios, symptoms, and recovery procedures.
+---
+
+# Failure Modes
+
+## Redis unavailable
+
+**Symptom:** API returns 500 errors on query submission; Celery workers fail to connect; Socket.IO updates stop.  
+**Cause:** Redis process crash, network partition, or misconfigured `REDIS_URL`.  
+**Recovery:** Restart Redis. Verify `REDIS_URL` is correct. Both FastAPI and Celery containers will need to restart to reconnect.
+
+## MongoDB unavailable
+
+**Symptom:** Annotation CRUD operations fail; user preferences can't be saved or loaded. Graph queries (which don't require MongoDB) still work.  
+**Cause:** MongoDB crash, connection pool exhaustion, network issue.  
+**Recovery:** Restart MongoDB. The app will reconnect on the next database operation.
+
+## Celery worker crash
+
+**Symptom:** Async tasks stay in `PENDING` status indefinitely; no workers pick up tasks from the broker queue.  
+**Cause:** Worker OOM, unhandled exception in task, or misconfiguration.  
+**Recovery:** Restart the Celery worker container. Check logs for the crash reason. The `--max-tasks-per-child 50` setting mitigates gradual memory leaks.
+
+## MORK CLI container not running
+
+**Symptom:** Queries return empty results or errors when `database.type` is `mork_cli`.  
+**Cause:** MORK container stopped or not started; Docker socket not mounted.  
+**Recovery:** Start the MORK CLI container. Verify Docker socket mount: `ls /var/run/docker.sock`.
+
+## Disk space exhaustion
+
+**Symptom:** MongoDB write failures; Redis eviction; app crashes on file write.  
+**Cause:** Large graph data, accumulated logs, or database growth.  
+**Recovery:** Clean up old data. Add disk space monitoring. Configure log rotation.
+
+## Large query timeout
+
+**Symptom:** Query takes too long; frontend times out; worker processing indefinitely.  
+**Cause:** Query matches too many nodes (>200k cap); unoptimized backend query; missing indexes.  
+**Recovery:** Cancel the task via the cancel endpoint. Refine query parameters to be more specific. Consider using batch mode.
+
+## Redis pub-sub message loss
+
+**Symptom:** Frontend doesn't receive progress updates, but tasks complete successfully.  
+**Cause:** FastAPI lifespan listener crashed or was never started; messages published during restart window are lost (pub-sub is fire-and-forget).  
+**Recovery:** Restart the FastAPI app. The lifespan handler will re-subscribe to the channel.
+
+## JWT secret mismatch
+
+**Symptom:** All API requests return 403 "Token is invalid!".  
+**Cause:** `JWT_SECRET` environment variable changed; frontend using tokens signed with old secret.  
+**Recovery:** Ensure `JWT_SECRET` is consistent across all environments. Redeploy frontend if needed.
+
+## Startup: config file missing
+
+**Symptom:** App crashes at startup with `Config file not found`.  
+**Cause:** `config/config.yaml` missing or not mounted.  
+**Recovery:** Verify the config file exists. In Docker, check volume mounts.
+
+## Startup: schema YAML parsing error
+
+**Symptom:** Schema endpoints return empty or partial results.  
+**Cause:** One of the schema YAML files has a syntax error.  
+**Recovery:** Check logs for `YAMLError`. Validate the YAML files against their schema.
+
+## Recovery checklist
+
+1. Check logs — `docker-compose logs --tail=100`
+2. Check Sentry for recent errors
+3. Verify Redis connectivity — `redis-cli ping`
+4. Verify MongoDB connectivity — `mongo --eval "db.runCommand({ ping: 1 })"`
+5. Check Celery worker status — `celery -A app.workers.celery_app status`
+6. Restart individual services — `docker-compose restart <service>`
+7. Full restart — `docker-compose down && docker-compose up --build`
+
+## What to read next
+
+- [Logging and Monitoring](/docs/operations/logging-and-monitoring)
+- [Runtime Architecture](/docs/operations/runtime-architecture)

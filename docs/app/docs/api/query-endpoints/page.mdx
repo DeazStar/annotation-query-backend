@@ -1,0 +1,109 @@
+---
+order: 2
+title: Query Endpoints
+description: Graph search, count queries, and annotation history CRUD.
+---
+
+# Query Endpoints
+
+## Why they exist
+
+These are the primary data access endpoints. They accept user query parameters (node types, filters, genome coordinates), execute them against the selected backend, and return structured graph results.
+
+## Endpoints
+
+### `POST /api/v1/query/search`
+
+The main query endpoint. Accepts search parameters and returns matching nodes and edges.
+
+**Request body:**
+```json
+{
+  "query": {
+    "types": ["gene", "transcript"],
+    "filters": { "gene_name": "TP53", "transcript_type": "protein_coding" },
+    "location": { "chr": "17", "start": 7660000, "end": 7690000 }
+  },
+  "async": false,
+  "annotation_id": null
+}
+```
+
+**`async=true`:** Submits to Celery and returns `{ "task_id": "...", "status": "PENDING" }`.  
+**`async=false` (default):** Executes synchronously and returns results inline.
+
+**Response:** `{ "nodes": [...], "edges": [...], "node_count": N, "edge_count": N, "annotation_id": "..." }`
+
+### `POST /api/v1/query/count`
+
+Returns aggregate node and edge counts for the matching query, without returning full result data. Always synchronous.
+
+### `GET /api/v1/query/annotations`
+
+Returns paginated annotation history for the authenticated user.
+
+**Query params:** `page=1` (10 per page)
+
+### `GET /api/v1/query/annotations/{id}`
+
+Returns a single annotation by ID.
+
+### `DELETE /api/v1/query/annotations`
+
+Deletes one or more annotations by ID array.
+
+**Request body:** `{ "ids": ["id1", "id2"] }`
+
+### `POST /api/v1/query/cancel`
+
+Cancels a running async task. Sends a stop signal to the Celery worker.
+
+**Request body:** `{ "task_id": "..." }`
+
+### `POST /api/v1/query/upload-vcf`
+
+Accepts a VCF file upload, processes it via a Celery task, and returns variant annotations.
+
+## Query parameters
+
+Each node type has a configurable form (defined in `app/constants.py` as `form_fields`). Parameters include:
+
+- **Text fields:** gene name, transcript name, protein name, ontology term
+- **Location fields:** chromosome, start, end (for genomic features)
+- **Type selectors:** gene type, transcript type, variant type, RNA type
+- **Ontology selectors:** GO subontology, term name
+
+## Batching
+
+For large result sets, the system uses batch mode:
+
+- `QUERY_MAX_NODES = 200_000` — hard cap on total returned nodes
+- `BATCH_MAX_TYPE_SIZE = 500_000` — node types with more nodes than this use per-node-only queries
+- `BATCH_NODE_THRESHOLD = 50` — result sets with ≥ 50 nodes use batched fetching
+
+## Where they live
+
+**File:** `app/api/api_v1/endpoints/query.py`
+
+Delegates to `annotation_controller.py` for orchestration and `task_service.py` for Celery submissions.
+
+## Dependencies
+
+- Active backend generator (cypher/metta/mork) — resolved at startup
+- Celery app (`app/workers/celery_app.py`) — for async submission
+- Redis — for task state and result caching
+- MongoDB — for annotation history CRUD
+- `AnnotationStorageService` — persistence
+
+## Failure modes
+
+- Backend unreachable → query returns 500 or task fails
+- Query exceeds node cap → truncated results with warning
+- Redis down → async submission fails
+- MongoDB down → annotation history unavailable, queries still work
+
+## What to read next
+
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Annotation Storage](/docs/persistence/annotation-storage)
+- [Backend Selection](/docs/architecture/backend-selection)

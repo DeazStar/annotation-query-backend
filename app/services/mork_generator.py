@@ -16,6 +16,25 @@ from resilience.retry_policy import get_retry_policy
 
 load_dotenv()
 
+from app.error import is_mork_transient
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+import pybreaker
+
+# Resilience Configuration
+MORK_RETRY_ATTEMPTS = int(os.getenv("MORK_RETRY_ATTEMPTS", 5))
+MORK_RETRY_MIN_WAIT = int(os.getenv("MORK_RETRY_MIN_WAIT", 1))
+MORK_RETRY_MAX_WAIT = int(os.getenv("MORK_RETRY_MAX_WAIT", 10))
+MORK_BREAKER_FAIL_MAX = int(os.getenv("MORK_BREAKER_FAIL_MAX", 5))
+MORK_BREAKER_RESET_TIMEOUT = int(os.getenv("MORK_BREAKER_RESET_TIMEOUT", 30))
+
+def exclude_non_transient(e):
+    return not is_mork_transient(e)
+
+mork_breaker = pybreaker.CircuitBreaker(
+    fail_max=MORK_BREAKER_FAIL_MAX, 
+    reset_timeout=MORK_BREAKER_RESET_TIMEOUT,
+    exclude=[exclude_non_transient]
+)
 class MorkQueryGenerator:
     def __init__(self, dataset_path):
         cb_threshold = int(os.getenv("MORK_CB_THRESHOLD", os.getenv("NEO4J_CB_THRESHOLD", "3")))
@@ -75,7 +94,14 @@ class MorkQueryGenerator:
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def _run_query_once(self, query, stop_event=None, species='human'):
+    @mork_breaker
+    @retry(
+        stop=stop_after_attempt(MORK_RETRY_ATTEMPTS),
+        wait=wait_exponential(multiplier=1, min=MORK_RETRY_MIN_WAIT, max=MORK_RETRY_MAX_WAIT),
+        retry=retry_if_exception(is_mork_transient),
+        reraise=True
+    )
+    def run_query(self, query, stop_event=None, species='human'):
         with app.config["annotation_lock"]:
             start_time = time.time()
             timestamp = datetime.datetime.utcnow().isoformat()

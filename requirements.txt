@@ -21,6 +21,8 @@ flask-redis==0.4.0
 nanoid==2.0.0
 elasticsearch==9.0.1
 pybind11>=2.10.0
+tenacity==9.1.4
+pybreaker==1.4.1
 tenacity>=9.1.4
 neo4j==5.28.0
 axiom-py==0.10.0

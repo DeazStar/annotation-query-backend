@@ -1,0 +1,58 @@
+---
+order: 4
+title: External Dependencies
+description: Third-party services and Python packages the system depends on.
+---
+
+# External Dependencies
+
+## Runtime services
+
+| Service | Purpose | Required |
+|---------|---------|----------|
+| Redis | Task broker, state management, pub-sub event bridge | Yes |
+| MongoDB | Persistent storage for annotations, users, shares | Yes |
+| Neo4j | Cypher query backend (when `type: cypher`) | Conditional |
+| MORK CLI | Production graph backend (when `type: mork_cli`) | Conditional |
+| Docker | MORK CLI container runtime | Conditional |
+
+## Optional services
+
+| Service | Purpose |
+|---------|---------|
+| Elasticsearch | Log indexing and search |
+| Sentry | Error tracking and performance monitoring |
+| SMTP server | Email notifications for annotation sharing |
+| OpenAI API | LLM-based title generation and graph summarization |
+| Gemini API | Alternative LLM provider |
+
+## Key Python packages
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| fastapi | latest | Web framework |
+| uvicorn | latest | ASGI server |
+| gunicorn | 23.0.0 | Production WSGI/ASGI server |
+| celery | latest | Distributed task queue |
+| redis | 4.6.0 | Redis client |
+| pymongoose | 1.3.8 | MongoDB ODM |
+| pyjwt | 2.9.0 | JWT encoding/decoding |
+| python-socketio | latest | Socket.IO server |
+| pydantic-settings | latest | Type-safe configuration |
+| neo4j | 6.0.3 | Neo4j driver |
+| hyperon | 0.2.10 | MeTTa runtime |
+| biocypher | >=0.5.4 | BioCypher pipeline |
+| elasticsearch | 9.0.1 | Elasticsearch client |
+| sentry-sdk | 2.43.0 | Error tracking |
+| openai | 1.51.2 | OpenAI API client |
+| httpx | 0.27.2 | HTTP client |
+| networkx | 3.4.2 | Graph algorithms |
+| nanoid | 2.0.0 | Unique ID generation |
+| pysam | 0.23.3 | VCF file processing |
+| APScheduler | 3.11.1 | Task scheduling |
+| axiom-py | 0.9.1 | Axiom logging |
+
+## What to read next
+
+- [Overview](/docs/getting-started/overview)
+- [Docker and Compose](/docs/operations/docker-and-compose)

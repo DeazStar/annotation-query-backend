@@ -1,0 +1,48 @@
+---
+order: 3
+title: Kubernetes Staging
+description: Kubernetes deployment configuration for the staging environment.
+---
+
+# Kubernetes Staging
+
+## Where it lives
+
+**Directory:** `k8s/staging/annotation/` in the repo root
+
+The staging environment uses Kubernetes manifests to deploy the annotation-query-backend. These are maintained separately from the Docker Compose development configuration.
+
+## Key differences from Docker Compose
+
+- **Orchestration:** Kubernetes handles pod lifecycle, scaling, and service discovery
+- **Configuration:** ConfigMaps and Secrets replace `.env` files
+- **Persistence:** PersistentVolumeClaims replace Docker volumes
+- **Ingress:** Kubernetes Ingress or service mesh replaces Caddy
+- **Health checks:** Liveness and readiness probes replace `restart: always`
+
+## Manifests
+
+The staging directory contains:
+
+- `deployment.yaml` — API server deployment (replicas, container spec, env, probes)
+- `service.yaml` — Service definition for internal routing
+- `configmap.yaml` — Non-sensitive configuration (if separated)
+- `secrets.yaml` — MongoDB URIs, JWT secrets, API keys (referenced via ` secretsProvider` or external secrets)
+
+## Staging specifics
+
+The staging environment is used for integration testing and pre-production validation. It connects to staging instances of:
+
+- MongoDB (Atlas or cluster-internal)
+- Redis (cluster-internal)
+- Neo4j or MORK CLI (depending on backend config)
+
+## Deploying
+
+Deployment to staging is typically handled via CI/CD pipeline (GitHub Actions). The exact rollout strategy is defined in `.github/workflows/`.
+
+## What to read next
+
+- [Docker and Compose](/docs/operations/docker-and-compose)
+- [Runtime Architecture](/docs/operations/runtime-architecture)
+- [Logging and Monitoring](/docs/operations/logging-and-monitoring)

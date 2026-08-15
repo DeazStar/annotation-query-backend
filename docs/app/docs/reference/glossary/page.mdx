@@ -1,0 +1,33 @@
+---
+order: 1
+title: Glossary
+description: Terminology used in the codebase and documentation.
+---
+
+# Glossary
+
+| Term | Definition |
+|------|------------|
+| **Annotation** | A saved query record with results, status, and metadata. Stored in MongoDB. |
+| **Backend** | A graph query engine — Cypher (Neo4j), MeTTa (hyperon), or MORK CLI (compiled C++). |
+| **Celery** | Distributed task queue used for async graph query execution. |
+| **Data source** | A biomedical knowledge source (e.g., GENCODE, UniProt, Reactome, GO). |
+| **Fingerprint** | A normalized hash of query parameters used for result deduplication and caching. |
+| **Graph info** | Metadata about the knowledge graph — node types, edge types, counts. |
+| **Handler** | An API endpoint function that processes a request and returns a response. |
+| **Lifespan** | FastAPI's async context manager for startup/shutdown tasks (e.g., Redis pub-sub listener). |
+| **MeTTa** | A formal language for modeling biological systems; also refers to a hyperon-based runtime. |
+| **MORK** | A compiled C++ biomedical graph engine; the recommended production backend. |
+| **Node type** | A category of graph entity (e.g., gene, transcript, protein, pathway). |
+| **pymongoose** | A Mongoose-like ODM for MongoDB used by the persistence layer. |
+| **Room** | A Socket.IO channel identified by `annotation_id`; clients join to receive task updates. |
+| **Schema** | The definition of node types, edge types, and properties in the knowledge graph. |
+| **Socket.IO** | A realtime bidirectional communication protocol built on WebSocket. |
+| **Species** | The biological species context for queries — `human` or `fly`. |
+| **Task** | A Celery work unit (e.g., `run_query`, `run_batch_query`, `process_vcf`). |
+| **Token** | JWT authentication token passed in the `Authorization` header. |
+
+## What to read next
+
+- [Key Files](/docs/reference/key-files)
+- [Environment Variables](/docs/reference/environment-variables)

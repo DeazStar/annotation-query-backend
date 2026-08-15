@@ -1,0 +1,27 @@
+---
+order: 3
+title: Architecture
+description: The current high-level structure of the annotation-query-backend.
+icon: architecture
+---
+
+# Architecture
+
+The annotation-query-backend is a multi-layer system:
+
+- **FastAPI** application serving HTTP and WebSocket endpoints
+- **Celery** workers executing long-running graph queries asynchronously
+- **Redis** providing task broker, result backend, and pub-sub event bridge
+- **MongoDB** persisting annotations, user preferences, and shared annotations
+- **Socket.IO** delivering realtime task progress to frontend clients
+- **Backend abstraction** supporting Cypher (Neo4j), MeTTa, and MORK CLI engines
+
+## Pages in this section
+
+- [System Overview](/docs/architecture/system-overview)
+- [Request Lifecycle](/docs/architecture/request-lifecycle)
+- [Async Task Lifecycle](/docs/architecture/async-task-lifecycle)
+- [Realtime Events](/docs/architecture/realtime-events)
+- [Backend Selection](/docs/architecture/backend-selection)
+- [Configuration Model](/docs/architecture/configuration-model)
+- [Data and Storage](/docs/architecture/data-and-storage)

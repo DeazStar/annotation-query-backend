@@ -1,0 +1,72 @@
+---
+order: 3
+title: Annotation Sharing
+description: Share annotations with other users via token or direct user ID.
+---
+
+# Annotation Sharing
+
+## Why it exists
+
+Researchers collaborate on genomic data exploration. The sharing system allows users to grant access to their saved queries and results to other users, with role-based permissions.
+
+## Endpoints
+
+### `POST /api/v1/share`
+
+Creates a share record for an annotation.
+
+**Request body:**
+```json
+{
+  "annotation_id": "...",
+  "share_type": "token",     # "token" (anyone with link) or "user" (specific user)
+  "recipient_user_id": "...", # required for share_type="user"
+  "role": "viewer"           # "viewer", "editor", or "owner"
+}
+```
+
+### `GET /api/v1/share/{id}`
+
+Retrieves a share record by ID.
+
+### `PUT /api/v1/share/{id}`
+
+Updates a share record (e.g., change role).
+
+### `DELETE /api/v1/share/{id}`
+
+Removes a share record.
+
+## Share models
+
+| Field | Description |
+|-------|-------------|
+| `annotation_id` | The shared annotation's MongoDB ID |
+| `token` | Unique access token for token-based sharing |
+| `share_type` | `token` (link-based) or `user` (direct) |
+| `recipient_user_id` | Target user ID (for user-type shares) |
+| `role` | `viewer`, `editor`, or `owner` |
+
+## Where it lives
+
+**File:** `app/api/api_v1/endpoints/annotation_sharing.py`  
+**Persistence:** `app/persistence/shared_annotation_storage_service.py`  
+**Model:** `app/models/shared_annotation.py`
+
+## Dependencies
+
+- MongoDB — all share records are persisted
+- JWT auth — the user must be authenticated; sharing operations check ownership
+- Mail (optional) — sharing notifications via Flask-Mail
+
+## Failure modes
+
+- MongoDB down → sharing CRUD unavailable
+- Share token collision → handled by nanoid generation
+- Recipient doesn't exist → share created but notification fails
+
+## What to read next
+
+- [Query Endpoints](/docs/api/query-endpoints)
+- [MongoDB Models](/docs/persistence/mongodb-models)

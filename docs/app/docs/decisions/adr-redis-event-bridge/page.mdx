@@ -1,0 +1,68 @@
+---
+order: 4
+title: "ADR: Redis Event Bridge"
+description: Bridging Celery task events to the frontend via Redis pub-sub and Socket.IO.
+---
+
+# ADR: Redis Event Bridge
+
+**Status:** Implemented
+
+## Context
+
+When Celery workers execute long-running tasks, the frontend needs realtime visibility into progress, status changes, and results. The challenge is that Celery workers and the FastAPI server are separate processes — the worker can't directly emit Socket.IO events to connected clients.
+
+## Decision
+
+Use Redis pub-sub as an event bridge between Celery workers and the FastAPI/Socket.IO server.
+
+### Architecture
+
+```
+Celery Worker → Redis pub-sub (channel: socket_event) → FastAPI lifespan listener → Socket.IO → Browser
+```
+
+1. Workers publish JSON messages to the Redis `socket_event` channel
+2. The FastAPI `lifespan` handler runs an asyncio task that subscribes to this channel
+3. On each message, the listener calls `sio.emit('update', payload, room=annotation_id)`
+4. The browser's Socket.IO client receives the event
+
+### Benefits of this approach
+
+- **Decoupling:** Workers don't need to know about Socket.IO or WebSocket connections
+- **Scalability:** Multiple API server instances can all receive the same events
+- **Simplicity:** Redis pub-sub is a well-understood, reliable pattern
+- **Separation of concerns:** Workers deal with data; the API server deals with realtime delivery
+
+### Key files
+
+- `app/main.py` — lifespan handler with pub-sub listener
+- `app/workers/task_handler.py` — worker-side Redis publishing
+- `app/socketio/server.py` — Socket.IO server
+- `app/events/socket_event.py` — Socket.IO event handlers
+
+## Consequences
+
+**Positive:**
+- Clean separation between task execution and event delivery
+- Supports multiple API server replicas
+- No direct coupling between workers and Socket.IO
+- Pub-sub is fire-and-forget — worker performance isn't affected by slow clients
+
+**Negative:**
+- Pub-sub message loss if the listener is down (no message persistence)
+- Event ordering isn't guaranteed under high load
+- Redis becomes an additional critical dependency for realtime features
+
+## Alternatives considered
+
+1. **Direct WebSocket from workers** — rejected because workers shouldn't manage persistent connections
+2. **Polling from frontend** — rejected due to latency and inefficiency
+3. **Celery event system** — rejected because it's designed for worker monitoring, not application-level progress
+4. **Message queue (RabbitMQ, NATS)** — rejected as over-engineering for the current scale
+
+## What to read next
+
+- [Realtime Events](/docs/architecture/realtime-events)
+- [WebSocket and Socket.IO](/docs/api/websocket-and-socketio)
+- [Redis State Model](/docs/workers/redis-state-model)

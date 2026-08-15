@@ -1,0 +1,33 @@
+---
+order: 1
+title: ADR Index
+description: Overview of all Architectural Decision Records.
+---
+
+# ADR Index
+
+| ADR | Decision | Status |
+|-----|----------|--------|
+| [FastAPI Migration](/docs/decisions/adr-fastapi-migration) | Migrate from Flask to FastAPI | Implemented |
+| [Celery Workers](/docs/decisions/adr-celery-workers) | Use Celery for async task execution | Implemented |
+| [Redis Event Bridge](/docs/decisions/adr-redis-event-bridge) | Bridge Celery events to Socket.IO via Redis pub-sub | Implemented |
+| [MORK CLI Backend](/docs/decisions/adr-mork-cli-backend) | Use MORK CLI as the production backend | Implemented |
+
+## Status definitions
+
+- **Proposed:** Under discussion, not yet implemented
+- **Accepted:** Decision made, implementation in progress
+- **Implemented:** Decision has been implemented and is in use
+- **Deprecated:** No longer recommended, will be removed
+- **Superseded:** Replaced by a newer ADR
+
+## ADR format
+
+Each ADR follows the standard template:
+
+- **Title:** A short identifier
+- **Status:** Current status
+- **Context:** Why the decision was needed
+- **Decision:** What was decided
+- **Consequences:** Trade-offs and implications
+- **Alternatives considered:** Other options that were evaluated

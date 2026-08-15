@@ -1,0 +1,66 @@
+---
+order: 3
+title: Local CI Workflow
+description: How to run CI checks locally before pushing.
+---
+
+# Local CI Workflow
+
+## Why run CI locally
+
+Catching failures before pushing to GitHub saves iteration time. The `run_ci_local.sh` script simulates the CI pipeline on your local machine.
+
+## CI script
+
+**File:** `run_ci_local.sh`
+
+```bash
+#!/bin/bash
+# Runs tests, linting, and type checks locally
+
+echo "=== Running tests ==="
+pytest tests/ -v --tb=short
+
+echo "=== Checking imports ==="
+python -c "from app.main import app; print('FastAPI app loaded successfully')"
+
+echo "=== Linting ==="
+flake8 app/ tests/
+```
+
+## What it checks
+
+1. **Tests:** Runs the full pytest suite with verbose output
+2. **Import check:** Ensures the FastAPI app loads without errors
+3. **Linting:** Runs `flake8` on `app/` and `tests/`
+
+## Running
+
+```bash
+chmod +x run_ci_local.sh
+./run_ci_local.sh
+```
+
+Requires a running Redis and MongoDB instance (or configure .env to use test values).
+
+## CI pipeline (GitHub Actions)
+
+The CI pipeline in `.github/workflows/` runs on every push to main and pull requests:
+
+1. Setup Python 3.10
+2. Install dependencies
+3. Start MongoDB and Redis (via services or GitHub Actions built-in)
+4. Run tests (`pytest` with coverage)
+5. Lint (`flake8`)
+6. Build docs site (if applicable)
+
+## Adding CI checks
+
+To add a new CI step:
+1. Update `run_ci_local.sh` with the local equivalent
+2. Update the GitHub Actions workflow file
+
+## What to read next
+
+- [Test Layout](/docs/testing/test-layout)
+- [Change Checklist](/docs/contributing/change-checklist)

@@ -1,0 +1,93 @@
+---
+order: 2
+title: Local Development
+description: Getting the backend running on your machine.
+---
+
+# Local Development
+
+## Prerequisites
+
+- Python 3.10+
+- Docker (for MORK CLI backend and compose workflows)
+- Neo4j instance (for cypher backend) — local or Aura
+- MongoDB instance — local or Atlas
+- Redis instance — local
+
+## Setup steps
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/rejuve-bio/annotation-query-backend.git
+   cd annotation-query-backend
+   ```
+
+2. **Create and activate a virtual environment:**
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Linux/Mac
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Build the native graph module (if using cypher backend):**
+   ```bash
+   python setup.py build_ext --inplace
+   ```
+
+5. **Configure environment:**
+   Copy `example.env` to `.env` (or create from scratch) and fill in required values:
+   ```bash
+   cp example.env .env
+   ```
+   See [Environment and Secrets](/docs/getting-started/environment-and-secrets) for the full variable reference.
+
+6. **Configure backend:**
+   Edit `config/config.yaml` to select the database type:
+   ```yaml
+   database:
+     type: cypher  # or metta, mork_cli
+     human:
+       data_dir: /path/to/data
+       act_file: human_v6.act
+   ```
+
+7. **Run the application:**
+   ```bash
+   flask run   # Legacy — starts Flask dev server on :5000
+   ```
+   Or with FastAPI directly:
+   ```bash
+   uvicorn app.main:socket_app --reload --port 8000
+   ```
+
+## Docker Compose (recommended for full stack)
+
+```bash
+docker-compose up --build
+```
+
+This starts: annotation-service (gunicorn + uvicorn), celery worker, MongoDB, Redis, and Caddy reverse proxy. The app is accessible on port 5000 through Caddy.
+
+## Run with bash script
+
+```bash
+sudo ./run.sh run    # Build and start containers
+sudo ./run.sh stop   # Stop containers
+sudo ./run.sh clean  # Stop and remove containers + network
+```
+
+## Notes
+
+- The `run.sh` script requires `sudo` for Docker commands.
+- `cypher_data/` and `metta_data/` directories must exist and contain the graph data files.
+- The default `APP_PORT` is 8000 when running with uvicorn directly, 5000 through Caddy.
+
+## What to read next
+
+- [Environment and Secrets](/docs/getting-started/environment-and-secrets)
+- [Project Map](/docs/getting-started/project-map)
+- [Docker and Compose](/docs/operations/docker-and-compose)

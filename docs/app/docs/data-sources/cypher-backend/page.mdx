@@ -1,0 +1,66 @@
+---
+order: 1
+title: Cypher Backend
+description: Neo4j-based graph query engine using the Cypher query language.
+---
+
+# Cypher Backend
+
+## What it is
+
+The Cypher backend translates query parameters into Cypher queries and executes them against a Neo4j graph database using the official `neo4j` Python driver.
+
+## Where it lives
+
+**File:** `app/services/cypher_generator.py` — `CypherQueryGenerator` class
+
+## Why it exists
+
+This was the original backend for the annotation-query-backend. Neo4j provides a mature graph database with ACID transactions, indexing, and a rich query language. It remains a supported option, particularly for smaller-to-medium graphs or development environments.
+
+## Inputs and outputs
+
+**Inputs:** Query parameters (node types, filters, location constraints, gene/protein names)  
+**Outputs:** Structured dict with `nodes` and `edges` lists, plus counts
+
+## How it works
+
+The `CypherQueryGenerator`:
+
+1. Builds a Cypher `MATCH` statement from the query parameters
+2. Adds `WHERE` clauses for property filters and location constraints
+3. Adds `RETURN` with the requested node properties
+4. Executes the query against the configured Neo4j instance via the `neo4j` driver
+5. Processes results into a uniform node/edge format
+
+## Dependencies
+
+- **Neo4j database** — must be running and accessible at the configured URI
+- **neo4j Python driver** — installed via `requirements.txt`
+- **Native C++ module** — `python setup.py build_ext --inplace` compiles `graph_core.cpp` for graph operations (used across backends)
+
+## Configuration
+
+```yaml
+database:
+  type: cypher
+```
+
+Environment variables:
+```
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=your-password
+```
+
+## Failure modes
+
+- Neo4j unreachable → connection error propagates as 500
+- Long query time → queries may time out; use async mode
+- Query syntax error → handled by the generator, returns empty result
+
+## What to read next
+
+- [Backend Selection](/docs/architecture/backend-selection)
+- [MORK CLI Backend](/docs/data-sources/mork-cli-backend)
+- [MeTTa Backend](/docs/data-sources/metta-backend)

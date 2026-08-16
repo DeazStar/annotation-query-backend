@@ -3,16 +3,29 @@ from app import app, schema_manager, db_instance, socketio, redis_client, Thread
 import logging
 import json
 import os
+import shutil
 import threading
 import time
 from app.lib import Graph
+from app.lib import query_dedup
 from app.constants import TaskStatus
 from app.persistence import AnnotationStorageService
 from pathlib import Path
 import traceback
 
 llm = app.config['llm_handler']
-EXP = os.getenv('REDIS_EXPIRATION', 3600) # expiration time of redis cache
+EXP = int(os.getenv('REDIS_EXPIRATION') or 3600)  # expiration time of redis cache
+DEDUP_WAIT_TIMEOUT = float(os.getenv('QUERY_DEDUP_WAIT_TIMEOUT', '7200'))
+
+GRAPH_DIR = Path(__file__).resolve().parent.parent.parent / 'public' / 'graph'
+
+
+def _notify_dedup_leader(annotation_id, status: str):
+    try:
+        query_dedup.notify_leader_ended(annotation_id, status)
+    except Exception as e:
+        logging.error('query_dedup leader notify failed: %s', e)
+
 
 def update_task(annotation_id, graph=None):
     with app.config['annotation_lock']:
@@ -31,6 +44,7 @@ def update_task(annotation_id, graph=None):
             }))
             AnnotationStorageService.update(annotation_id, {'status': status})
             redis_client.delete(f"{annotation_id}_tasks")
+            _notify_dedup_leader(annotation_id, TaskStatus.COMPLETE.value)
             return TaskStatus.COMPLETE.value
 
         # Increment task count atomically and get the new count
@@ -38,6 +52,7 @@ def update_task(annotation_id, graph=None):
 
         if status in [TaskStatus.FAILED.value, TaskStatus.CANCELLED.value]:
             if task_num >= 4 and cache['status'] == TaskStatus.CANCELLED.value:
+                _notify_dedup_leader(annotation_id, TaskStatus.CANCELLED.value)
                 AnnotationStorageService.delete(annotation_id)
                 redis_client.delete(f"{annotation_id}_tasks")
                 redis_client.delete(str(annotation_id))
@@ -52,6 +67,7 @@ def update_task(annotation_id, graph=None):
             }))
             AnnotationStorageService.update(annotation_id, {'status': status})
             redis_client.delete(f"{annotation_id}_tasks")
+            _notify_dedup_leader(annotation_id, status)
         elif status == TaskStatus.PENDING.value:
             redis_client.set(str(annotation_id), json.dumps({
                 'graph': graph, 'status': status
@@ -221,6 +237,7 @@ def generate_result(query_code, annotation_id, requests, result_status, species,
         socketio.emit('update', {'status': TaskStatus.FAILED.value, 'update': {'graph': False}})
         AnnotationStorageService.update(annotation_id, {'status': TaskStatus.FAILED.value})
         result_status.set()
+        _notify_dedup_leader(annotation_id, TaskStatus.FAILED.value)
         logging.error("Error generating result graph %s", e)
 
 
@@ -382,6 +399,7 @@ def generate_total_count(
             },
         )
         total_count_status.set()
+        _notify_dedup_leader(annotation_id, TaskStatus.FAILED.value)
         logging.error("Error generating total count %s", e)
         traceback.print_exc()
 
@@ -535,7 +553,7 @@ def generate_label_count(
         count_label_status.set()
         logging.error("Error generating result graph %s", e)
     except Exception as e:
-        set_status(annotation_id, "FAILED")
+        set_status(annotation_id, TaskStatus.FAILED.value)
         update_task(annotation_id)
 
         update = generate_empty_lable_count(requests)
@@ -549,8 +567,203 @@ def generate_label_count(
         )
         socketio.emit("update", {"status": TaskStatus.FAILED.value, "update": update})
         count_label_status.set()
+        _notify_dedup_leader(annotation_id, TaskStatus.FAILED.value)
         logging.error("Error generating label count %s", e)
         traceback.print_exc()
+
+
+def replicate_annotation_from_leader(follower_id, leader_id):
+    leader_doc = AnnotationStorageService.get_by_id(leader_id)
+    if not leader_doc:
+        raise ValueError('leader annotation not found')
+    cache = get_annotation_redis(leader_id)
+    if not cache:
+        raise ValueError('leader redis cache missing')
+    graph = cache.get('graph')
+    if graph is None:
+        raise ValueError('leader graph not ready')
+
+    src = GRAPH_DIR / f'{leader_id}.json'
+    dst = GRAPH_DIR / f'{follower_id}.json'
+    GRAPH_DIR.mkdir(parents=True, exist_ok=True)
+    if src.exists():
+        shutil.copy2(src, dst)
+    path_url = str(dst.resolve()) if dst.exists() else getattr(leader_doc, 'path_url', None)
+
+    AnnotationStorageService.update(
+        follower_id,
+        {
+            'status': TaskStatus.COMPLETE.value,
+            'node_count': leader_doc.node_count,
+            'edge_count': leader_doc.edge_count,
+            'node_count_by_label': leader_doc.node_count_by_label,
+            'edge_count_by_label': leader_doc.edge_count_by_label,
+            'summary': leader_doc.summary,
+            'path_url': path_url,
+        },
+    )
+
+    redis_client.setex(
+        str(follower_id),
+        EXP,
+        json.dumps({'graph': graph, 'status': TaskStatus.COMPLETE.value}),
+    )
+    redis_client.delete(f'{follower_id}_tasks')
+
+    socketio.emit(
+        'update',
+        {'status': TaskStatus.COMPLETE.value, 'update': {'graph': True}},
+        to=str(follower_id),
+    )
+    socketio.emit(
+        'update',
+        {
+            'status': TaskStatus.COMPLETE.value,
+            'update': {
+                'node_count': leader_doc.node_count,
+                'edge_count': leader_doc.edge_count,
+            },
+        },
+        to=str(follower_id),
+    )
+    socketio.emit(
+        'update',
+        {
+            'status': TaskStatus.COMPLETE.value,
+            'update': {
+                'node_count_by_label': leader_doc.node_count_by_label,
+                'edge_count_by_label': leader_doc.edge_count_by_label,
+            },
+        },
+        to=str(follower_id),
+    )
+    if leader_doc.summary:
+        socketio.emit(
+            'update',
+            {'status': TaskStatus.COMPLETE.value, 'update': {'summary': leader_doc.summary}},
+            to=str(follower_id),
+        )
+
+
+def replicate_leader_terminal_to_follower(follower_id, leader_id, status: str):
+    leader_doc = AnnotationStorageService.get_by_id(leader_id)
+    payload = {'status': status}
+    if leader_doc:
+        payload['node_count'] = getattr(leader_doc, 'node_count', None)
+        payload['edge_count'] = getattr(leader_doc, 'edge_count', None)
+        payload['node_count_by_label'] = getattr(leader_doc, 'node_count_by_label', None)
+        payload['edge_count_by_label'] = getattr(leader_doc, 'edge_count_by_label', None)
+    else:
+        payload['node_count'] = 0
+        payload['edge_count'] = 0
+
+    AnnotationStorageService.update(follower_id, payload)
+    set_status(follower_id, status)
+    if status == TaskStatus.FAILED.value:
+        socketio.emit(
+            'update',
+            {'status': status, 'update': {'graph': False}},
+            to=str(follower_id),
+        )
+    elif status == TaskStatus.CANCELLED.value:
+        socketio.emit(
+            'update',
+            {'status': status, 'update': {'graph': False}},
+            to=str(follower_id),
+        )
+
+
+def _try_replicate_from_leader(follower_id, leader_id) -> bool:
+    cache = get_annotation_redis(leader_id)
+    if not cache:
+        return False
+    if cache.get('status') != TaskStatus.COMPLETE.value:
+        return False
+    if cache.get('graph') is None:
+        return False
+    replicate_annotation_from_leader(follower_id, leader_id)
+    return True
+
+
+def wait_and_replicate_dedup(follower_id, leader_id, args, mode: str):
+    annotation_threads = app.config['annotation_threads']
+    annotation_threads[str(follower_id)] = threading.Event()
+
+    if mode == 'cache':
+        if _try_replicate_from_leader(follower_id, leader_id):
+            return
+        logging.warning(
+            'query_dedup cache miss for follower=%s leader=%s; running full pipeline',
+            follower_id,
+            leader_id,
+        )
+        start_thread(follower_id, args)
+        return
+
+    deadline = time.time() + DEDUP_WAIT_TIMEOUT
+    while time.time() < deadline:
+        leader_status = get_status(leader_id)
+        if leader_status == TaskStatus.COMPLETE.value:
+            cache = get_annotation_redis(leader_id)
+            if cache and cache.get('graph') is not None:
+                replicate_annotation_from_leader(follower_id, leader_id)
+                query_dedup.cleanup_follower(follower_id)
+                return
+        elif leader_status == TaskStatus.FAILED.value:
+            replicate_leader_terminal_to_follower(
+                follower_id, leader_id, TaskStatus.FAILED.value
+            )
+            query_dedup.cleanup_follower(follower_id)
+            return
+        elif leader_status == TaskStatus.CANCELLED.value:
+            replicate_leader_terminal_to_follower(
+                follower_id, leader_id, TaskStatus.CANCELLED.value
+            )
+            query_dedup.cleanup_follower(follower_id)
+            return
+        time.sleep(0.25)
+
+    logging.error(
+        'query_dedup follower=%s timed out waiting for leader=%s',
+        follower_id,
+        leader_id,
+    )
+    AnnotationStorageService.update(
+        follower_id, {'status': TaskStatus.FAILED.value, 'node_count': 0, 'edge_count': 0}
+    )
+    set_status(follower_id, TaskStatus.FAILED.value)
+    socketio.emit(
+        'update',
+        {'status': TaskStatus.FAILED.value, 'update': {'graph': False}},
+        to=str(follower_id),
+    )
+    query_dedup.cleanup_follower(follower_id)
+
+
+def start_dedup_replication(annotation_id, leader_id, args, mode: str):
+    def run():
+        try:
+            wait_and_replicate_dedup(annotation_id, leader_id, args, mode)
+        except Exception as e:
+            logging.exception('query_dedup replication failed: %s', e)
+            try:
+                AnnotationStorageService.update(
+                    annotation_id, {'status': TaskStatus.FAILED.value}
+                )
+                set_status(annotation_id, TaskStatus.FAILED.value)
+                socketio.emit(
+                    'update',
+                    {'status': TaskStatus.FAILED.value, 'update': {'graph': False}},
+                    to=str(annotation_id),
+                )
+            except Exception:
+                logging.exception('query_dedup follower failure cleanup failed')
+            query_dedup.cleanup_follower(annotation_id)
+
+    threading.Thread(
+        name=f'query_dedup_{annotation_id}', target=run, daemon=True
+    ).start()
+
 
 def start_thread(annotation_id, args):
     all_status = args['all_status']

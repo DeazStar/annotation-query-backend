@@ -1,30 +1,115 @@
 import networkx as nx
 from networkx.readwrite import json_graph
+import os
 import random
 import json
 import hashlib
+import logging
 from nanoid import generate
 from app.lib.utils import extract_middle
 from copy import deepcopy
+
 try:
     import graph_native
 except ImportError:
     graph_native = None
 
+_graph_metrics = {
+    "native_success": 0,
+    "native_fallback": 0,
+    "native_parity_mismatch": 0,
+}
+
+
+def _normalize_graph(graph):
+    normalized = {"nodes": [], "edges": []}
+    for node in graph.get("nodes", []):
+        data = deepcopy(node.get("data", {}))
+        data.pop("id", None)
+        normalized["nodes"].append(data)
+    for edge in graph.get("edges", []):
+        data = deepcopy(edge.get("data", {}))
+        data.pop("id", None)
+        normalized["edges"].append(data)
+    normalized["nodes"] = sorted(
+        normalized["nodes"],
+        key=lambda item: (
+            item.get("type", ""),
+            item.get("name", ""),
+            item.get("parent", ""),
+            len(item.get("nodes", [])),
+        ),
+    )
+    normalized["edges"] = sorted(
+        normalized["edges"],
+        key=lambda item: (
+            item.get("source", ""),
+            item.get("target", ""),
+            item.get("edge_id", ""),
+            item.get("label", ""),
+        ),
+    )
+    return normalized
+
+
 class Graph:
     def __init__(self):
-        pass
+        self.native_enabled = os.getenv("GRAPH_NATIVE_ENABLED", "true").lower() == "true"
+        self.shadow_mode = os.getenv("GRAPH_NATIVE_SHADOW", "false").lower() == "true"
 
     def group_graph(self, graph):
-        if graph_native:
-            return graph_native.group_graph(graph)
+        return self._execute("group_graph", graph)
+
+    def group_node_only(self, graph, request):
+        return self._execute("group_node_only", graph, request)
+
+    def break_grouping(self, graph):
+        return self._execute("break_grouping", graph)
+
+    def _execute(self, operation_name, *args):
+        global graph_native
+        native_func = getattr(graph_native, operation_name, None) if graph_native else None
+        py_func = getattr(self, f"_py_{operation_name}")
+
+        if self.shadow_mode:
+            _saved_native = graph_native
+            graph_native = None
+            try:
+                py_result = py_func(*args)
+            finally:
+                graph_native = _saved_native
+            try:
+                native_result = native_func(*args)
+                if _normalize_graph(native_result) != _normalize_graph(py_result):
+                    _graph_metrics["native_parity_mismatch"] += 1
+                    logging.warning(
+                        "Graph native parity mismatch for operation %s", operation_name
+                    )
+                if self.native_enabled:
+                    _graph_metrics["native_success"] += 1
+                    return native_result
+            except Exception as error:
+                _graph_metrics["native_fallback"] += 1
+                logging.exception("Graph native shadow execution failed: %s", error)
+            return py_result
+
+        if self.native_enabled and native_func:
+            try:
+                result = native_func(*args)
+                _graph_metrics["native_success"] += 1
+                return result
+            except Exception as error:
+                _graph_metrics["native_fallback"] += 1
+                logging.exception("Graph native execution failed, using python fallback: %s", error)
+
+        return py_func(*args)
+
+    def _py_group_graph(self, graph):
         graph = self.collapse_node_nx(graph)
         graph = self.group_into_parents(graph)
         return graph
 
-    def group_node_only(self, graph, request):
-        if graph_native:
-            return graph_native.group_node_only(graph, request)
+    def _py_group_node_only(self, graph, request):
         nodes = graph['nodes']
         new_graph = {'nodes': [], 'edges': []}
 
@@ -521,9 +606,7 @@ class Graph:
 
         return self.convert_to_graph_json(G, allow_data=False)
 
-    def break_grouping(self, graph):
-        if graph_native:
-            return graph_native.break_grouping(graph)
+    def _py_break_grouping(self, graph):
         nodes = graph['nodes']
         edges = graph['edges']
 

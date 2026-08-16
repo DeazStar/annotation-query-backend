@@ -286,7 +286,12 @@ py::dict convert_to_graph_json(const Graph& graph, bool allow_data) {
         ed_data["target"] = py::cast(e.target);
         ed_data["edge_id"] = py::cast(e.edge_id);
         ed_data["label"] = py::cast(e.label);
-        for (auto const& [k, v] : e.attrs) ed_data[py::str(k)] = v;
+        for (auto const& [k, v] : e.attrs) {
+            string key = k;
+            if (key != "id" && key != "source" && key != "target" && key != "edge_id" && key != "label") {
+                ed_data[py::str(k)] = v;
+            }
+        }
         
         if (allow_data) {
             ed["data"] = ed_data;

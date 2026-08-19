@@ -141,7 +141,7 @@ class MorkQueryGenerator:
             retry_policy=self._retry_policy,
         )
 
-    def query_Generator(self, requests, node_map, limit=None, node_only=False):
+    def query_Generator(self, requests, node_map, limit=None, node_only=False, tenant_id=None):
         # this will do only transfomration
         nodes = requests['nodes']
         predicate_map = {}

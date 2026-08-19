@@ -51,7 +51,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
-    def query_Generator(self, requests ,node_map, limit=None, node_only=False):
+    def query_Generator(self, requests ,node_map, limit=None, node_only=False, tenant_id=None):
         nodes = requests['nodes']
         predicate_map = {}
         

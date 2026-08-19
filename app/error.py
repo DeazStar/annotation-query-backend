@@ -23,3 +23,30 @@ def is_mork_transient(exc: Exception) -> bool:
             return response.status_code in {429, 500, 502, 503, 504}
 
     return False
+
+
+NEO4J_TRANSIENT_EXCEPTIONS = MORK_TRANSIENT_EXCEPTIONS + (
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
+
+
+def is_neo4j_transient(exc: Exception) -> bool:
+    """Returns True if the exception is a temporary Neo4j network glitch."""
+    if isinstance(exc, NEO4J_TRANSIENT_EXCEPTIONS):
+        return True
+
+    try:
+        from neo4j.exceptions import Neo4jError, ServiceUnavailable, SessionExpired
+    except ImportError:
+        return False
+
+    if isinstance(exc, (ServiceUnavailable, SessionExpired)):
+        return True
+
+    if isinstance(exc, Neo4jError):
+        code = getattr(exc, "code", None) or ""
+        return code.startswith("Neo.TransientError") or code == "ServiceUnavailable"
+
+    return False

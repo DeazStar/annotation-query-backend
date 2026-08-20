@@ -59,6 +59,53 @@ class SchemaManager:
 
         return merged_schema
 
+    def build_general_schema(self, custom_representation=None):
+        nodes = {}
+        edges = {}
+
+        for data_source in self.schmea_representation.values():
+            for label, node in data_source["nodes"].items():
+                entry = nodes.setdefault(label, {"label": label, "properties": {}})
+                entry["properties"].update(node.get("properties", {}))
+
+            for label, edge in data_source["edges"].items():
+                entry = edges.setdefault(label, {
+                    "source": edge.get("source", ""),
+                    "target": edge.get("target", ""),
+                    "label": edge.get("label", label),
+                    "properties": {},
+                })
+                entry["properties"].update(edge.get("properties", {}))
+
+        for label, node in self.fly_schema_represetnation["nodes"].items():
+            entry = nodes.setdefault(label, {"label": label, "properties": {}})
+            entry["properties"].update(node.get("properties", {}))
+
+        for label, edge in self.fly_schema_represetnation["edges"].items():
+            entry = edges.setdefault(label, {
+                "source": edge.get("source", ""),
+                "target": edge.get("target", ""),
+                "label": edge.get("label", label),
+                "properties": {},
+            })
+            entry["properties"].update(edge.get("properties", {}))
+
+        if custom_representation:
+            for label, node in custom_representation["nodes"].items():
+                entry = nodes.setdefault(label, {"label": label, "properties": {}})
+                entry["properties"].update(node.get("properties", {}))
+
+            for label, edge in custom_representation["edges"].items():
+                entry = edges.setdefault(label, {
+                    "source": edge.get("source", ""),
+                    "target": edge.get("target", ""),
+                    "label": edge.get("label", label),
+                    "properties": {},
+                })
+                entry["properties"].update(edge.get("properties", {}))
+
+        return {"nodes": nodes, "edges": edges}
+
     def get_schema_list(self):
         schema_list = []
 

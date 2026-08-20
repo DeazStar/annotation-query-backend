@@ -7,7 +7,7 @@ class QueryGeneratorInterface(ABC):
         pass
 
     @abstractmethod
-    def query_Generator(self, requests, node_map, limit, node_only) -> str:
+    def query_Generator(self, requests, node_map, limit, node_only, tenant_id=None) -> str:
         pass
 
     @abstractmethod

@@ -349,6 +349,9 @@ def process_query(current_user_id):
     properties = request.args.get('properties')
     # can be either hypothesis or ai_assistant
     source = request.args.get('source')
+    # aggregated mode: sources=all or sources=human,fly,custom
+    sources = request.args.get('sources')
+    folder_id = request.args.get('folder_id')
 
     if properties:
         properties = bool(strtobool(properties))
@@ -410,6 +413,24 @@ def process_query(current_user_id):
         user = UserStorageService.get(current_user_id)
         data_source = user.data_source if user else 'all'
         species = user.species if user else 'human'
+
+        if sources or species == 'all':
+            if not folder_id:
+                return jsonify({"error": "folder_id is required for aggregated query"}), 400
+            from app.services.aggregation import handle_aggregated_query
+            try:
+                aggregated = handle_aggregated_query(
+                    requests, folder_id, limit=limit, source=source)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
+            except Exception as e:
+                logger.error(
+                    f"Aggregated query failed (user={current_user_id}, "
+                    f"folder_id={folder_id}): {e}\n{traceback.format_exc()}")
+                return jsonify({"error": "Aggregated query failed"}), 500
+            formatted_response = json.dumps(aggregated, indent=4)
+            return Response(formatted_response, mimetype='application/json')
+
         node_map = validate_request(requests, schema_manager.schema[species], source)
         if node_map is None:
             return jsonify(

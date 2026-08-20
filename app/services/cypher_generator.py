@@ -8,6 +8,11 @@ import neo4j
 from neo4j import GraphDatabase
 from neo4j.graph import Node, Relationship
 from app.error import ThreadStopException, is_neo4j_transient
+from app.services.query_generator_interface import QueryGeneratorInterface
+from resilience.circuit_breaker import CircuitBreaker
+from resilience.exceptions import classify_database_exception
+from resilience.executor import execute_with_resilience
+from resilience.retry_policy import get_retry_policy
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception, before_sleep_log
 import pybreaker
 
@@ -42,6 +47,7 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         self._circuit_breakers = {
             "human": CircuitBreaker(threshold=cb_threshold, recovery_timeout=cb_recovery),
             "fly": CircuitBreaker(threshold=cb_threshold, recovery_timeout=cb_recovery),
+            "custom": CircuitBreaker(threshold=cb_threshold, recovery_timeout=cb_recovery),
         }
         self.human_driver = self._init_driver_with_cb(
             "human",
@@ -55,6 +61,15 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             os.getenv('FLY_NEO4J_USERNAME'),
             os.getenv('FLY_NEO4J_PASSWORD')
         )
+        custom_uri = os.getenv('CUSTOM_NEO4J_URI')
+        self.custom_driver = None
+        if custom_uri:
+            self.custom_driver = self._init_driver_with_cb(
+                "custom",
+                custom_uri,
+                os.getenv('CUSTOM_NEO4J_USERNAME'),
+                os.getenv('CUSTOM_NEO4J_PASSWORD')
+            )
         from app.lib.result_formatter import Result_Formatter
         self.formatter = Result_Formatter()
         # self.dataset_path = dataset_path
@@ -81,6 +96,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             self.human_driver.close()
         if self.fly_driver is not None:
             self.fly_driver.close()
+        if self.custom_driver is not None:
+            self.custom_driver.close()
 
     def load_dataset(self, path: str) -> None:
         if not os.path.exists(path):
@@ -127,7 +144,10 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         return results
 
     def run_query(self, query_code, stop_event=None, species="human"):
-        driver = self.human_driver if species == "human" else self.fly_driver
+        if species == "custom":
+            driver = self.custom_driver
+        else:
+            driver = self.human_driver if species == "human" else self.fly_driver
         circuit_breaker = self._circuit_breakers.get(
             species, self._circuit_breakers["human"]
         )
@@ -146,9 +166,13 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             retry_policy=self._retry_policy,
         )
 
-    def query_Generator(self, requests, node_map, limit=None, node_only=False):
+    def query_Generator(self, requests, node_map, limit=None, node_only=False, tenant_id=None):
         nodes = requests['nodes']
         predicate_map = {}
+
+        if tenant_id:
+            def tenant_conditions(vars):
+                return [f"{var_name}.tenant_id = '{tenant_id}'" for var_name in vars]
 
         if "predicates" in requests and len(requests["predicates"]) > 0:
             predicates = requests["predicates"]
@@ -186,6 +210,8 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     where_no_preds.extend(self.where_construct(node, var_name))
                 return_no_preds.append(var_name)
                 list_of_node_ids.append(var_name)
+            if tenant_id:
+                where_no_preds.extend(tenant_conditions(list_of_node_ids))
             if node_only:
                 cypher_query = self.construct_optional_clause(
                     match_no_preds, return_no_preds, where_no_preds, limit)
@@ -224,6 +250,9 @@ class CypherQueryGenerator(QueryGeneratorInterface):
                     tmp_where_preds.extend(self.where_construct(target_node, target_var))
                     where_preds.extend(
                         self.where_construct(target_node, target_var))
+                if tenant_id:
+                    tmp_where_preds.extend(tenant_conditions([source_var, target_var]))
+                    where_preds.extend(tenant_conditions([source_var, target_var]))
 
                 return_preds.append(predicate_id)
                 node_ids.add(source_var)
@@ -403,6 +432,41 @@ class CypherQueryGenerator(QueryGeneratorInterface):
             else:
                 properties.append(f"{var_name}.{key} =~ '(?i){property}'")
         return properties
+
+    def introspect_tenant_schema(self, tenant_id):
+        if self.custom_driver is None:
+            raise ValueError("CUSTOM_NEO4J_URI is not configured")
+        with self.custom_driver.session() as session:
+            node_labels = session.run(
+                "MATCH (n) WHERE n.tenant_id = $tenant_id "
+                "WITH DISTINCT labels(n) AS labels, keys(n) AS props "
+                "RETURN labels, props", tenant_id=tenant_id)
+            rel_types = session.run(
+                "MATCH (a)-[r]->(b) WHERE a.tenant_id = $tenant_id "
+                "RETURN DISTINCT type(r) AS rel_type, "
+                "labels(a) AS source, labels(b) AS target", tenant_id=tenant_id)
+
+            nodes = {}
+            for record in node_labels:
+                for label in record['labels']:
+                    nodes.setdefault(label, {"label": label, "properties": {}})
+                    for prop in record['props']:
+                        if prop != 'tenant_id':
+                            nodes[label]["properties"][prop] = None
+
+            edges = {}
+            for record in rel_types:
+                source = record['source'][0] if record['source'] else 'node'
+                target = record['target'][0] if record['target'] else 'node'
+                rel_type = record['rel_type']
+                edges[rel_type] = {
+                    "source": source,
+                    "target": target,
+                    "label": rel_type,
+                    "properties": {},
+                }
+
+        return {"nodes": nodes, "edges": edges}
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):
         return self.formatter.format_result(input, "neo4j", graph_components, result_type)

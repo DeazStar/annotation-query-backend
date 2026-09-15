@@ -893,69 +893,69 @@ def cell_component(
                 }
             )
 
-        go_ids = []
         protein_node_map = {}
 
         for node in nodes:
             if node["data"]["type"] == "protein":
                 for single_node in node["data"]["nodes"]:
-                    id = single_node["id"].split(" ")[1]
-                    proteins.append(id)
-                    if id not in protein_node_map:
-                        protein_node_map[id] = {}
-                    protein_node_map[id]["data"] = {**single_node, "location": ""}
+                    protein_raw_id = single_node["id"].split(" ")[1]
+                    proteins.append(protein_raw_id)
+                    if protein_raw_id not in protein_node_map:
+                        protein_node_map[protein_raw_id] = {}
+                    protein_node_map[protein_raw_id]["data"] = {**single_node, "location": ""}
 
-        go_subcomponents = {
-            "type": "go",
-            "id": "",
-            "properties": {"subontology": "cellular_component"},
-        }
-
-        go_parent = {"type": "go", "id": "", "properties": {}}
-
+        # The frontend sends GO IDs colon-separated (GO:0005634) but they are
+        # stored underscore-separated (GO_0005634). Query with the stored
+        # form; the colon form is restored before returning.
+        protein_ids = [protein_id for protein_id in proteins if protein_id]
+        location_ids = []
         for location in locations:
-            go_id = location.lower()
-            go_id = go_id.replace(":", "_")
-            go_ids.append(go_id)
+            location = location.strip().upper()
+            if not location:
+                continue
+            location_ids.append(location.replace(":", "_"))
 
-        query = db_instance.list_query_generator_source_target(
-            go_subcomponents, go_parent, go_ids, "subclass_of"
+        def _to_colon_form(component_id):
+            """GO_0005634 -> GO:0005634, for the frontend's location field."""
+            component_id = str(component_id)
+            return component_id.replace("_", ":", 1) if component_id.startswith("GO_") else component_id
+
+        escaped_protein_ids = ", ".join(
+            f"'{protein_id.replace(chr(39), chr(39) * 2)}'" for protein_id in protein_ids
+        )
+        escaped_location_ids = ", ".join(
+            f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
         )
 
-        result = db_instance.run_query(query)
-        parsed_result_go = db_instance.parse_list_query(result)
-
-        go_ids = []
-
-        for key in parsed_result_go.keys():
-            go_ids.append(key)
-            go_ids.extend(parsed_result_go[key]["node_ids"])
-
-        source = {"type": "go", "id": "", "properties": {}}
-
-        target = {"type": "protein", "id": "", "properties": {}}
-
-        query = db_instance.list_query_generator_both(
-            source, target, go_ids, proteins, "go_gene_product"
-        )
+        # Proteins may be localised via either relationship type.
+        query = f"""
+MATCH (protein:protein)-[relationship:located_in|part_of]->
+      (component:cellular_component)
+WHERE protein.id IN [{escaped_protein_ids}]
+  AND component.id IN [{escaped_location_ids}]
+RETURN protein.id AS protein_id, component.id AS component_id
+"""
 
         result = db_instance.run_query(query)
-        parsed_result = db_instance.parse_list_query(result)
 
-        for key in parsed_result.keys():
-            normalized_id = []
-            location = parsed_result[key]["node_ids"]
-            for i, _ in enumerate(location):
-                for parent_id in parsed_result_go.keys():
-                    if (
-                        location[i] == parent_id
-                        or location[i] in parsed_result_go[parent_id]["node_ids"]
-                    ):
-                        normalized_id.append(parent_id.replace("_", ":").upper())
-            protein_node_map[key]["data"]["location"] = ",".join(normalized_id)
+        # Only protein nodes are returned. The frontend reads each protein's
+        # "location" field (comma-separated GO IDs, colon form) to drive the
+        # cell visualizer, and does not expect cellular_component nodes/edges.
+        for record in result:
+            protein_id = record["protein_id"]
+            component_id = record["component_id"]
+            if protein_id not in protein_node_map:
+                continue
+            colon_id = _to_colon_form(component_id)
+            current_location = protein_node_map[protein_id]["data"].get("location", "")
+            locations_for_protein = [v for v in current_location.split(",") if v]
+            if colon_id not in locations_for_protein:
+                locations_for_protein.append(colon_id)
+            protein_node_map[protein_id]["data"]["location"] = ",".join(locations_for_protein)
 
         for values in protein_node_map.values():
             response["nodes"].append(values)
+        
 
         logger.info(
             json.dumps(

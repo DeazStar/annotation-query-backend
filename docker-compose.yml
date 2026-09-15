@@ -76,7 +76,7 @@ services:
       C_FORCE_ROOT: "1"
 
   mongodb:
-    image: mongo:7.0
+    image: mongo:latest
     volumes:
       - mongo_data:/data/db
     ports:

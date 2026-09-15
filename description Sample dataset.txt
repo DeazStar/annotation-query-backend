@@ -1,0 +1,2168 @@
+{
+  "description": "Sample dataset: Gene \u2192 Protein \u2192 Cellular Component localization. Contains human genes, their protein products, and where those proteins are located in the cell according to Gene Ontology (GO) cellular component annotations.",
+  "nodes": [
+    {
+      "id": "GO:0005634",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005634",
+        "term_name": "nucleus",
+        "description": "A membrane-bounded organelle of eukaryotic cells in which chromosomes are housed and replicated.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005737",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005737",
+        "term_name": "cytoplasm",
+        "description": "All of the contents of a cell excluding the plasma membrane and nucleus.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005739",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005739",
+        "term_name": "mitochondrion",
+        "description": "A semiautonomous, self replicating organelle that occurs in varying numbers, shapes, and sizes in the cytoplasm of virtually all eukaryotic cells.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005730",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005730",
+        "term_name": "nucleolus",
+        "description": "A small, dense body one or more of which are present in the nucleus of eukaryotic cells.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005654",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005654",
+        "term_name": "nucleoplasm",
+        "description": "That part of the nuclear content other than the chromosomes or the nucleolus.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005886",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005886",
+        "term_name": "plasma membrane",
+        "description": "The membrane surrounding a cell that separates the cell from its external environment.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005783",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005783",
+        "term_name": "endoplasmic reticulum",
+        "description": "The irregular network of unit membranes, visible only by electron microscopy.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005768",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005768",
+        "term_name": "endosome",
+        "description": "A membrane-bounded compartment to which endocytosed material is delivered.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005794",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005794",
+        "term_name": "Golgi apparatus",
+        "description": "A compound membranous cytoplasmic organelle of eukaryotic cells.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005764",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005764",
+        "term_name": "lysosome",
+        "description": "A small lytic vacuole that has cell cycle-independent morphology.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0000139",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0000139",
+        "term_name": "Golgi membrane",
+        "description": "The lipid bilayer surrounding any of the compartments of the Golgi apparatus.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005743",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005743",
+        "term_name": "mitochondrial inner membrane",
+        "description": "The inner, of the two lipid bilayers enclosing the mitochondrion.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005741",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005741",
+        "term_name": "mitochondrial outer membrane",
+        "description": "The outer of the two lipid bilayers enclosing the mitochondrion.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005759",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005759",
+        "term_name": "mitochondrial matrix",
+        "description": "The gel-like material, with considerable fine structure, that lies in the matrix space.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005840",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005840",
+        "term_name": "ribosome",
+        "description": "An intracellular organelle, about 200 A in diameter, consisting of RNA and protein.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005856",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005856",
+        "term_name": "cytoskeleton",
+        "description": "Any of the various filamentous elements that form the internal framework of cells.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005829",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005829",
+        "term_name": "cytosol",
+        "description": "The part of the cytoplasm that does not contain organelles but which does contain other particulate matter.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0016020",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0016020",
+        "term_name": "membrane",
+        "description": "A lipid bilayer along with all the proteins and protein complexes embedded in it.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0005615",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0005615",
+        "term_name": "extracellular space",
+        "description": "That part of a multicellular organism outside the cells proper.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "GO:0045202",
+      "type": "cellular_component",
+      "properties": {
+        "id": "GO:0045202",
+        "term_name": "synapse",
+        "description": "The junction between a nerve fiber of one neuron and another neuron or muscle fiber.",
+        "source": "Gene Ontology",
+        "source_url": "http://geneontology.org"
+      }
+    },
+    {
+      "id": "ENSG00000141510",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000141510",
+        "gene_name": "TP53",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 79552551,
+        "end": 232498118,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P04637",
+      "type": "protein",
+      "properties": {
+        "id": "P04637",
+        "protein_name": "Tumor protein p53",
+        "accessions": [
+          "P04637"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000012048",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000012048",
+        "gene_name": "BRCA1",
+        "gene_type": "protein_coding",
+        "chr": "chr21",
+        "start": 38521672,
+        "end": 233998974,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P38398",
+      "type": "protein",
+      "properties": {
+        "id": "P38398",
+        "protein_name": "Breast cancer type 1 susceptibility protein",
+        "accessions": [
+          "P38398"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000139618",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000139618",
+        "gene_name": "BRCA2",
+        "gene_type": "protein_coding",
+        "chr": "chr11",
+        "start": 21639800,
+        "end": 225953976,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P51587",
+      "type": "protein",
+      "properties": {
+        "id": "P51587",
+        "protein_name": "Breast cancer type 2 susceptibility protein",
+        "accessions": [
+          "P51587"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000157764",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000157764",
+        "gene_name": "BRAF",
+        "gene_type": "protein_coding",
+        "chr": "chr17",
+        "start": 20207907,
+        "end": 205093081,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P15056",
+      "type": "protein",
+      "properties": {
+        "id": "P15056",
+        "protein_name": "Serine/threonine-protein kinase B-raf",
+        "accessions": [
+          "P15056"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000133703",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000133703",
+        "gene_name": "KRAS",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 184449045,
+        "end": 242487733,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P01116",
+      "type": "protein",
+      "properties": {
+        "id": "P01116",
+        "protein_name": "GTPase KRas",
+        "accessions": [
+          "P01116"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000171862",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000171862",
+        "gene_name": "PTEN",
+        "gene_type": "protein_coding",
+        "chr": "chr2",
+        "start": 134917157,
+        "end": 222024101,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P60484",
+      "type": "protein",
+      "properties": {
+        "id": "P60484",
+        "protein_name": "Phosphatidylinositol 3,4,5-trisphosphate 3-phosphatase",
+        "accessions": [
+          "P60484"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000104936",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000104936",
+        "gene_name": "DMPK",
+        "gene_type": "protein_coding",
+        "chr": "chr17",
+        "start": 188724307,
+        "end": 215744025,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q09013",
+      "type": "protein",
+      "properties": {
+        "id": "Q09013",
+        "protein_name": "Myotonin-protein kinase",
+        "accessions": [
+          "Q09013"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000116990",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000116990",
+        "gene_name": "MYCN",
+        "gene_type": "protein_coding",
+        "chr": "chr16",
+        "start": 115360123,
+        "end": 218256986,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P04198",
+      "type": "protein",
+      "properties": {
+        "id": "P04198",
+        "protein_name": "N-myc proto-oncogene protein",
+        "accessions": [
+          "P04198"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000136997",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000136997",
+        "gene_name": "MYC",
+        "gene_type": "protein_coding",
+        "chr": "chr7",
+        "start": 71856001,
+        "end": 210286008,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P01106",
+      "type": "protein",
+      "properties": {
+        "id": "P01106",
+        "protein_name": "Myc proto-oncogene protein",
+        "accessions": [
+          "P01106"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000146648",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000146648",
+        "gene_name": "EGFR",
+        "gene_type": "protein_coding",
+        "chr": "chr15",
+        "start": 42495679,
+        "end": 243714592,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P00533",
+      "type": "protein",
+      "properties": {
+        "id": "P00533",
+        "protein_name": "Epidermal growth factor receptor",
+        "accessions": [
+          "P00533"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000121879",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000121879",
+        "gene_name": "PIK3CA",
+        "gene_type": "protein_coding",
+        "chr": "chr10",
+        "start": 62930600,
+        "end": 231258329,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P42336",
+      "type": "protein",
+      "properties": {
+        "id": "P42336",
+        "protein_name": "Phosphatidylinositol 4,5-bisphosphate 3-kinase",
+        "accessions": [
+          "P42336"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000183765",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000183765",
+        "gene_name": "CHEK2",
+        "gene_type": "protein_coding",
+        "chr": "chr7",
+        "start": 57591369,
+        "end": 238087925,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "O96017",
+      "type": "protein",
+      "properties": {
+        "id": "O96017",
+        "protein_name": "Serine/threonine-protein kinase Chk2",
+        "accessions": [
+          "O96017"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000078900",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000078900",
+        "gene_name": "TP73",
+        "gene_type": "protein_coding",
+        "chr": "chr3",
+        "start": 143639441,
+        "end": 234884519,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "O15350",
+      "type": "protein",
+      "properties": {
+        "id": "O15350",
+        "protein_name": "Tumor protein p73",
+        "accessions": [
+          "O15350"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000171791",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000171791",
+        "gene_name": "BCL2",
+        "gene_type": "protein_coding",
+        "chr": "chr1",
+        "start": 81527259,
+        "end": 201147948,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P10415",
+      "type": "protein",
+      "properties": {
+        "id": "P10415",
+        "protein_name": "Apoptosis regulator Bcl-2",
+        "accessions": [
+          "P10415"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000107201",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000107201",
+        "gene_name": "DDX5",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 54653543,
+        "end": 223360493,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P17844",
+      "type": "protein",
+      "properties": {
+        "id": "P17844",
+        "protein_name": "Probable ATP-dependent RNA helicase DDX5",
+        "accessions": [
+          "P17844"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000149311",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000149311",
+        "gene_name": "ATM",
+        "gene_type": "protein_coding",
+        "chr": "chr16",
+        "start": 107410419,
+        "end": 244746292,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q13315",
+      "type": "protein",
+      "properties": {
+        "id": "Q13315",
+        "protein_name": "Serine-protein kinase ATM",
+        "accessions": [
+          "Q13315"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000085587",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000085587",
+        "gene_name": "TAF4",
+        "gene_type": "protein_coding",
+        "chr": "chr13",
+        "start": 117769940,
+        "end": 223205480,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "O00268",
+      "type": "protein",
+      "properties": {
+        "id": "O00268",
+        "protein_name": "Transcription initiation factor TFIID subunit 4",
+        "accessions": [
+          "O00268"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000105173",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000105173",
+        "gene_name": "CCNE1",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 75965363,
+        "end": 224668133,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P24864",
+      "type": "protein",
+      "properties": {
+        "id": "P24864",
+        "protein_name": "G1/S-specific cyclin-E1",
+        "accessions": [
+          "P24864"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000117399",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000117399",
+        "gene_name": "CDC20",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 163438047,
+        "end": 201591923,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q12834",
+      "type": "protein",
+      "properties": {
+        "id": "Q12834",
+        "protein_name": "Cell division cycle protein 20 homolog",
+        "accessions": [
+          "Q12834"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000164924",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000164924",
+        "gene_name": "YWHAZ",
+        "gene_type": "protein_coding",
+        "chr": "chr4",
+        "start": 160801745,
+        "end": 241631115,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P63104",
+      "type": "protein",
+      "properties": {
+        "id": "P63104",
+        "protein_name": "14-3-3 protein zeta/delta",
+        "accessions": [
+          "P63104"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000105329",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000105329",
+        "gene_name": "TGFB1",
+        "gene_type": "protein_coding",
+        "chr": "chr20",
+        "start": 140365399,
+        "end": 249745975,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P01137",
+      "type": "protein",
+      "properties": {
+        "id": "P01137",
+        "protein_name": "Transforming growth factor beta-1",
+        "accessions": [
+          "P01137"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000107643",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000107643",
+        "gene_name": "MAPK8",
+        "gene_type": "protein_coding",
+        "chr": "chr8",
+        "start": 115908948,
+        "end": 203838520,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P45983",
+      "type": "protein",
+      "properties": {
+        "id": "P45983",
+        "protein_name": "Mitogen-activated protein kinase 8",
+        "accessions": [
+          "P45983"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000100030",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000100030",
+        "gene_name": "MAPK1",
+        "gene_type": "protein_coding",
+        "chr": "chr5",
+        "start": 96552090,
+        "end": 242191291,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P28482",
+      "type": "protein",
+      "properties": {
+        "id": "P28482",
+        "protein_name": "Mitogen-activated protein kinase 1",
+        "accessions": [
+          "P28482"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000169032",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000169032",
+        "gene_name": "MAP2K1",
+        "gene_type": "protein_coding",
+        "chr": "chr15",
+        "start": 100929303,
+        "end": 244908202,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q02750",
+      "type": "protein",
+      "properties": {
+        "id": "Q02750",
+        "protein_name": "Dual specificity mitogen-activated protein kinase kinase 1",
+        "accessions": [
+          "Q02750"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000128052",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000128052",
+        "gene_name": "KDR",
+        "gene_type": "protein_coding",
+        "chr": "chr9",
+        "start": 73358710,
+        "end": 224890226,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P35968",
+      "type": "protein",
+      "properties": {
+        "id": "P35968",
+        "protein_name": "Vascular endothelial growth factor receptor 2",
+        "accessions": [
+          "P35968"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000181143",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000181143",
+        "gene_name": "MUC16",
+        "gene_type": "protein_coding",
+        "chr": "chr16",
+        "start": 132565481,
+        "end": 230984705,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q8WXI7",
+      "type": "protein",
+      "properties": {
+        "id": "Q8WXI7",
+        "protein_name": "Mucin-16",
+        "accessions": [
+          "Q8WXI7"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000155657",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000155657",
+        "gene_name": "TTN",
+        "gene_type": "protein_coding",
+        "chr": "chr11",
+        "start": 20950108,
+        "end": 226363615,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q8WZ42",
+      "type": "protein",
+      "properties": {
+        "id": "Q8WZ42",
+        "protein_name": "Titin",
+        "accessions": [
+          "Q8WZ42"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000110092",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000110092",
+        "gene_name": "CCND1",
+        "gene_type": "protein_coding",
+        "chr": "chr4",
+        "start": 109987301,
+        "end": 239369883,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P24385",
+      "type": "protein",
+      "properties": {
+        "id": "P24385",
+        "protein_name": "G1/S-specific cyclin-D1",
+        "accessions": [
+          "P24385"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000196776",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000196776",
+        "gene_name": "CD47",
+        "gene_type": "protein_coding",
+        "chr": "chr21",
+        "start": 18373018,
+        "end": 221297424,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "Q08722",
+      "type": "protein",
+      "properties": {
+        "id": "Q08722",
+        "protein_name": "Leukocyte surface antigen CD47",
+        "accessions": [
+          "Q08722"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    },
+    {
+      "id": "ENSG00000006468",
+      "type": "gene",
+      "properties": {
+        "id": "ENSG00000006468",
+        "gene_name": "ETV1",
+        "gene_type": "protein_coding",
+        "chr": "chr5",
+        "start": 84606615,
+        "end": 210717755,
+        "taxon_id": 9606,
+        "source": "GENCODE",
+        "source_url": "https://www.gencodegenes.org"
+      }
+    },
+    {
+      "id": "P50549",
+      "type": "protein",
+      "properties": {
+        "id": "P50549",
+        "protein_name": "ETS translocation variant 1",
+        "accessions": [
+          "P50549"
+        ],
+        "is_canonical": true,
+        "taxon_id": 9606,
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "type": "translates_to",
+      "source": "ENSG00000141510",
+      "target": "P04637",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P04637",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P04637",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "IEP",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000012048",
+      "target": "P38398",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P38398",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P38398",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "IPI",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P38398",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000139618",
+      "target": "P51587",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P51587",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P51587",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000157764",
+      "target": "P15056",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P15056",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P15056",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000133703",
+      "target": "P01116",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01116",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "TAS",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01116",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000171862",
+      "target": "P60484",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P60484",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "TAS",
+        "db_reference": "PMID:56789012",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P60484",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IPI",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000104936",
+      "target": "Q09013",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q09013",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q09013",
+      "target": "GO:0005743",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000116990",
+      "target": "P04198",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P04198",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000136997",
+      "target": "P01106",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01106",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:56789012",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01106",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "IPI",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000146648",
+      "target": "P00533",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P00533",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "IMP",
+        "db_reference": "PMID:56789012",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P00533",
+      "target": "GO:0005768",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000121879",
+      "target": "P42336",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P42336",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "IEP",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P42336",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000183765",
+      "target": "O96017",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "O96017",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "O96017",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IMP",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000078900",
+      "target": "O15350",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "O15350",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IEP",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000171791",
+      "target": "P10415",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P10415",
+      "target": "GO:0005741",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P10415",
+      "target": "GO:0016020",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000107201",
+      "target": "P17844",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P17844",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P17844",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P17844",
+      "target": "GO:0005730",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000149311",
+      "target": "Q13315",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q13315",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000085587",
+      "target": "O00268",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "O00268",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "O00268",
+      "target": "GO:0005654",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:56789012",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000105173",
+      "target": "P24864",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P24864",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P24864",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000117399",
+      "target": "Q12834",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q12834",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IMP",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000164924",
+      "target": "P63104",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P63104",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "TAS",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P63104",
+      "target": "GO:0005829",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000105329",
+      "target": "P01137",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01137",
+      "target": "GO:0005615",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P01137",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "IGI",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000107643",
+      "target": "P45983",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P45983",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IDA",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P45983",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IPI",
+        "db_reference": "PMID:45678901",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000100030",
+      "target": "P28482",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P28482",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P28482",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IMP",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000169032",
+      "target": "Q02750",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q02750",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000128052",
+      "target": "P35968",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P35968",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "ISO",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000181143",
+      "target": "Q8WXI7",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q8WXI7",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000155657",
+      "target": "Q8WZ42",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q8WZ42",
+      "target": "GO:0005856",
+      "properties": {
+        "evidence": "IMP",
+        "db_reference": "PMID:23456789",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000110092",
+      "target": "P24385",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P24385",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:56789012",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P24385",
+      "target": "GO:0005737",
+      "properties": {
+        "evidence": "IEP",
+        "db_reference": "PMID:12345678",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000196776",
+      "target": "Q08722",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "Q08722",
+      "target": "GO:0005886",
+      "properties": {
+        "evidence": "IC",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    },
+    {
+      "type": "translates_to",
+      "source": "ENSG00000006468",
+      "target": "P50549",
+      "properties": {
+        "source": "UniProt",
+        "source_url": "https://www.uniprot.org",
+        "taxon_id": 9606
+      }
+    },
+    {
+      "type": "located_in",
+      "source": "P50549",
+      "target": "GO:0005634",
+      "properties": {
+        "evidence": "ISS",
+        "db_reference": "PMID:34567890",
+        "taxon_id": 9606,
+        "qualifier": "located_in",
+        "source": "GOA",
+        "source_url": "http://geneontology.org/gene-associations/goa_human.gaf.gz"
+      }
+    }
+  ],
+  "schema": {
+    "node_types": {
+      "gene": {
+        "description": "A protein-coding gene",
+        "properties": [
+          "id",
+          "gene_name",
+          "gene_type",
+          "chr",
+          "start",
+          "end",
+          "taxon_id",
+          "source",
+          "source_url"
+        ]
+      },
+      "protein": {
+        "description": "A protein product of a gene",
+        "properties": [
+          "id",
+          "protein_name",
+          "accessions",
+          "is_canonical",
+          "taxon_id",
+          "source",
+          "source_url"
+        ]
+      },
+      "cellular_component": {
+        "description": "A GO cellular component term describing where in the cell a protein is located",
+        "properties": [
+          "id",
+          "term_name",
+          "description",
+          "source",
+          "source_url"
+        ]
+      }
+    },
+    "edge_types": {
+      "translates_to": {
+        "description": "A gene is translated into a protein",
+        "source": "gene",
+        "target": "protein",
+        "properties": [
+          "source",
+          "source_url",
+          "taxon_id"
+        ]
+      },
+      "located_in": {
+        "description": "A protein is located in a cellular component (from GOA annotations)",
+        "source": "protein",
+        "target": "cellular_component",
+        "properties": [
+          "evidence",
+          "db_reference",
+          "taxon_id",
+          "qualifier",
+          "source",
+          "source_url"
+        ]
+      }
+    }
+  }
+}

@@ -904,9 +904,21 @@ def cell_component(
                         protein_node_map[protein_raw_id] = {}
                     protein_node_map[protein_raw_id]["data"] = {**single_node, "location": ""}
 
-        # --- New Neo4j schema: direct protein -[:located_in]-> cellular_component match ---
+        # The frontend sends GO IDs colon-separated (GO:0005634) but they are
+        # stored underscore-separated (GO_0005634). Query with the stored
+        # form; the colon form is restored before returning.
         protein_ids = [protein_id for protein_id in proteins if protein_id]
-        location_ids = [location.strip().upper() for location in locations if location.strip()]
+        location_ids = []
+        for location in locations:
+            location = location.strip().upper()
+            if not location:
+                continue
+            location_ids.append(location.replace(":", "_"))
+
+        def _to_colon_form(component_id):
+            """GO_0005634 -> GO:0005634, for the frontend's location field."""
+            component_id = str(component_id)
+            return component_id.replace("_", ":", 1) if component_id.startswith("GO_") else component_id
 
         escaped_protein_ids = ", ".join(
             f"'{protein_id.replace(chr(39), chr(39) * 2)}'" for protein_id in protein_ids
@@ -915,63 +927,34 @@ def cell_component(
             f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
         )
 
+        # Proteins may be localised via either relationship type.
         query = f"""
-MATCH (protein:protein)-[relationship:located_in]->
+MATCH (protein:protein)-[relationship:located_in|part_of]->
       (component:cellular_component)
 WHERE protein.id IN [{escaped_protein_ids}]
   AND component.id IN [{escaped_location_ids}]
-RETURN protein, relationship, component
+RETURN protein.id AS protein_id, component.id AS component_id
 """
 
         result = db_instance.run_query(query)
 
-        component_nodes = {}
-        component_edges = []
-
+        # Only protein nodes are returned. The frontend reads each protein's
+        # "location" field (comma-separated GO IDs, colon form) to drive the
+        # cell visualizer, and does not expect cellular_component nodes/edges.
         for record in result:
-            protein = record["protein"]
-            relationship = record["relationship"]
-            component = record["component"]
-            protein_id = protein["id"]
-            component_id = component["id"]
-            protein_graph_id = f"protein {protein_id}"
-            component_graph_id = f"cellular_component {component_id}"
-
-            # Keep the existing "location" string on the protein node for
-            # backward compatibility with any client already reading it.
-            if protein_id in protein_node_map:
-                current_location = protein_node_map[protein_id]["data"].get("location", "")
-                locations_for_protein = [v for v in current_location.split(",") if v]
-                if component_id not in locations_for_protein:
-                    locations_for_protein.append(component_id)
-                protein_node_map[protein_id]["data"]["location"] = ",".join(locations_for_protein)
-
-            # NOTE: explicit id/type set AFTER the spread, so the component's
-            # own raw "id" property can't silently overwrite the graph-scoped id
-            # that the edge below references.
-            component_nodes[component_graph_id] = {
-                "data": {
-                    **dict(component),
-                    "id": component_graph_id,
-                    "type": "cellular_component",
-                }
-            }
-
-            edge_data = {
-                "id": generate(),
-                "source": protein_graph_id,
-                "target": component_graph_id,
-                "label": relationship.type,
-                "edge_id": f"protein_{relationship.type}_cellular_component",
-            }
-            for key, value in relationship.items():
-                edge_data["source_data" if key == "source" else key] = value
-            component_edges.append({"data": edge_data})
+            protein_id = record["protein_id"]
+            component_id = record["component_id"]
+            if protein_id not in protein_node_map:
+                continue
+            colon_id = _to_colon_form(component_id)
+            current_location = protein_node_map[protein_id]["data"].get("location", "")
+            locations_for_protein = [v for v in current_location.split(",") if v]
+            if colon_id not in locations_for_protein:
+                locations_for_protein.append(colon_id)
+            protein_node_map[protein_id]["data"]["location"] = ",".join(locations_for_protein)
 
         for values in protein_node_map.values():
             response["nodes"].append(values)
-        response["nodes"].extend(component_nodes.values())
-        response["edges"].extend(component_edges)
         
 
         logger.info(

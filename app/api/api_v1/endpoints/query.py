@@ -1026,94 +1026,42 @@ def cell_component(
 
         # --- Fetch direct protein -> cellular_component matches per backend ---
         protein_ids = [protein_id for protein_id in proteins if protein_id]
-        location_ids = [location.strip().upper() for location in locations if location.strip()]
+        location_ids = []
+        for location in locations:
+            location = location.strip().upper()
+            if not location:
+                continue
+            # The frontend sends GO IDs colon-separated (GO:0005634) but they
+            # are stored underscore-separated (GO_0005634). Query with the
+            # stored form; the colon form is restored before returning.
+            location_ids.append(location.replace(":", "_"))
+
+        def _to_colon_form(component_id):
+            """GO_0005634 -> GO:0005634, for the frontend's location field."""
+            return str(component_id).replace("_", ":", 1) if str(component_id).startswith("GO_") else str(component_id)
+
+        # Proteins may be localised via either relationship type.
+        LOCALIZATION_PREDICATES = ("located_in", "part_of")
+
+        # (protein_id, component_id) pairs that have a localization relationship.
+        located_pairs = []
 
         if settings.DATABASE_TYPE.get("type") in ["mork", "mork_cli"]:
-            mork_schema = deepcopy(schema_manager.full_schema_representation)
-            species_schema = mork_schema.setdefault(species, {"nodes": {}, "edges": {}})
-            species_schema["nodes"].setdefault(
-                "cellular_component",
-                {"properties": {key: {} for key in (
-                    "id", "term_name", "description", "source", "source_url"
-                )}},
-            )
-            species_schema["edges"].setdefault(
-                "located_in",
-                {"properties": {key: {} for key in (
-                    "evidence", "db_reference", "taxon_id", "qualifier", "source", "source_url"
-                )}},
-            )
-
-            mork_atoms = []
-            # 1. Fetch cellular_component node properties once per unique location_id
-            for location_id in location_ids:
-                target = f"cellular_component {location_id}"
-                for property_name in species_schema["nodes"]["cellular_component"]["properties"]:
-                    mork_atoms.extend(
-                        _run_mork_single_pattern(
-                            db_instance,
-                            f"({property_name} ({target}) $v)",
-                            f"(tmp (node {property_name} ({target}) $v))",
-                        )
-                    )
-
-            # 2. Fetch located_in edge properties for each (protein, location) pair
             for protein_id in protein_ids:
                 for location_id in location_ids:
                     source = f"protein {protein_id}"
                     target = f"cellular_component {location_id}"
-                    for property_name in species_schema["edges"]["located_in"]["properties"]:
-                        mork_atoms.extend(
-                            _run_mork_single_pattern(
-                                db_instance,
-                                f"({property_name} (located_in ({source}) ({target})) $v)",
-                                f"(tmp (edge {property_name} (located_in ({source}) ({target})) $v))",
-                            )
+                    for predicate in LOCALIZATION_PREDICATES:
+                        atoms = _run_mork_single_pattern(
+                            db_instance,
+                            f"({predicate} ({source}) ({target}))",
+                            f"(tmp (edge {predicate} ({source}) ({target})))",
                         )
-
-            serialized = db_instance.parse_and_serialize_properties(
-                [mork_atoms], {"properties": True}, "graph"
-            )
-            serialized_nodes = {}
-            for node in serialized.get("nodes", []):
-                node_data = {
-                    key: _clean_mork_val(value)
-                    for key, value in node["data"].items()
-                }
-                raw_id = str(node_data.get("id", "")).removeprefix("cellular_component").strip()
-                serialized_nodes[raw_id] = node_data
-                serialized_nodes[f"cellular_component {raw_id}"] = node_data
-
-            component_records = []
-            for edge in serialized.get("edges", []):
-                edge_data = edge["data"]
-                if edge_data.get("label") != "located_in":
-                    continue
-                source_id = edge_data["source"]
-                target_id = edge_data["target"]
-                raw_target_id = str(target_id).removeprefix("cellular_component").strip()
-                target_node = (
-                    serialized_nodes.get(target_id)
-                    or serialized_nodes.get(raw_target_id)
-                    or {}
-                )
-                if target_node:
-                    component_records.append(
-                        (
-                            {"id": source_id.split(" ", 1)[1]},
-                            {
-                                key: value
-                                for key, value in edge_data.items()
-                                if key not in {"id", "source", "target", "label", "edge_id"}
-                            },
-                            target_node,
-                        )
-                    )
+                        if atoms:
+                            located_pairs.append((protein_id, location_id))
+                            break
 
         elif settings.DATABASE_TYPE.get("type") == "metta":
-
-            CELLULAR_COMPONENT_PROPERTIES = ("term_name", "description", "source", "source_url")
-            LOCATED_IN_EDGE_PROPERTIES = ("evidence", "db_reference", "taxon_id", "qualifier", "source", "source_url")
 
             def _run_metta_pattern(match_clause, return_clause):
                 query_code = f"!(match &space (, {match_clause}) (, {return_clause}))"
@@ -1126,73 +1074,18 @@ def cell_component(
                     return []
                 return result[0] if isinstance(result[0], list) else result
 
-            metta_atoms = []
-
-            for location_id in location_ids:
-                target = f"cellular_component {location_id}"
-                match_terms = []
-                return_terms = []
-                for prop in CELLULAR_COMPONENT_PROPERTIES:
-                    var = f"${db_instance.generate_id()}"
-                    match_terms.append(f"({prop} ({target}) {var})")
-                    return_terms.append(f"(node {prop} ({target}) {var})")
-                metta_atoms.extend(_run_metta_pattern(" ".join(match_terms), " ".join(return_terms)))
-
             for protein_id in protein_ids:
                 for location_id in location_ids:
                     source = f"protein {protein_id}"
                     target = f"cellular_component {location_id}"
-                    match_terms = []
-                    return_terms = []
-                    for prop in LOCATED_IN_EDGE_PROPERTIES:
-                        var = f"${db_instance.generate_id()}"
-                        match_terms.append(f"({prop} (located_in ({source}) ({target})) {var})")
-                        return_terms.append(f"(edge {prop} (located_in ({source}) ({target})) {var})")
-                    metta_atoms.extend(_run_metta_pattern(" ".join(match_terms), " ".join(return_terms)))
-
-            serialized = db_instance.parse_and_serialize_properties(
-                [metta_atoms], {"properties": True}, "graph"
-            )
-            # This backend's underlying loader silently drops quoted,
-            # multi-word string facts, so cellular_localization_sample.metta
-            # was generated with underscores in place of spaces for any
-            # text property (term_name, description, source) to survive
-            # loading. Convert back to spaces here so the API response
-            # matches Neo4j/Mork's human-readable format exactly.
-            _SPACE_RESTORE_KEYS = ("term_name", "description", "source")
-            serialized_nodes = {
-                node["data"]["id"]: {
-                    key: (
-                        value.replace("_", " ")
-                        if key in _SPACE_RESTORE_KEYS and isinstance(value, str)
-                        else value
-                    )
-                    for key, value in node["data"].items()
-                }
-                for node in serialized.get("nodes", [])
-            }
-
-            component_records = []
-            for edge in serialized.get("edges", []):
-                edge_data = edge["data"]
-                if edge_data.get("label") != "located_in":
-                    continue
-                source_id = edge_data["source"]
-                target_id = edge_data["target"]
-                target_node = serialized_nodes.get(target_id)
-                if not target_node:
-                    continue
-                component_records.append(
-                    (
-                        {"id": source_id.split(" ", 1)[1]},
-                        {
-                            key: value
-                            for key, value in edge_data.items()
-                            if key not in {"id", "source", "target", "label", "edge_id"}
-                        },
-                        target_node,
-                    )
-                )
+                    for predicate in LOCALIZATION_PREDICATES:
+                        matched = _run_metta_pattern(
+                            f"({predicate} ({source}) ({target}))",
+                            f"(edge {predicate} ({source}) ({target}))",
+                        )
+                        if matched:
+                            located_pairs.append((protein_id, location_id))
+                            break
 
         else:
             escaped_protein_ids = ", ".join(
@@ -1202,70 +1095,34 @@ def cell_component(
                 f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
             )
 
+            relationship_pattern = "|".join(LOCALIZATION_PREDICATES)
             query = f"""
-MATCH (protein:protein)-[relationship:located_in]->
+MATCH (protein:protein)-[relationship:{relationship_pattern}]->
       (component:cellular_component)
 WHERE protein.id IN [{escaped_protein_ids}]
   AND component.id IN [{escaped_location_ids}]
-RETURN protein, relationship, component
+RETURN protein.id AS protein_id, component.id AS component_id
 """
             result = db_instance.run_query(query)
-            component_records = [
-                (record["protein"], record["relationship"], record["component"])
-                for record in result
+            located_pairs = [
+                (record["protein_id"], record["component_id"]) for record in result
             ]
 
-        component_nodes = {}
-        component_edges = []
-
-        for protein, relationship, component in component_records:
-            protein_id = protein["id"]
-            component_id = str(component.get("id", "")).removeprefix("cellular_component").strip()
-            if not component_id:
+        # Only protein nodes are returned. The frontend reads each protein's
+        # "location" field (comma-separated GO IDs, colon form) to drive the
+        # cell visualizer, and does not expect cellular_component nodes/edges.
+        for protein_id, component_id in located_pairs:
+            if protein_id not in protein_node_map:
                 continue
-            protein_graph_id = f"protein {protein_id}"
-            component_graph_id = f"cellular_component {component_id}"
-
-            # Keep the existing "location" string on the protein node for
-            # backward compatibility with any client already reading it.
-            if protein_id in protein_node_map:
-                current_location = protein_node_map[protein_id]["data"].get("location", "")
-                locations_for_protein = [v for v in current_location.split(",") if v]
-                if component_id not in locations_for_protein:
-                    locations_for_protein.append(component_id)
-                protein_node_map[protein_id]["data"]["location"] = ",".join(locations_for_protein)
-
-            # NOTE: explicit id/type set AFTER the spread, so the component's
-            # own raw "id" property can't silently overwrite the graph-scoped id
-            # that the edge below references.
-            component_nodes[component_graph_id] = {
-                "data": {
-                    **dict(component),
-                    "id": component_graph_id,
-                    "type": "cellular_component",
-                }
-            }
-
-            relationship_type = relationship.type if hasattr(relationship, "type") else "located_in"
-            edge_data = {
-                "id": generate(),
-                "source": protein_graph_id,
-                "target": component_graph_id,
-                "label": relationship_type,
-                "edge_id": f"protein_{relationship_type}_cellular_component",
-            }
-
-            structural_keys = {"id", "target", "label", "edge_id"}
-            for key, value in relationship.items():
-                if key in structural_keys:
-                    continue
-                edge_data["source_data" if key == "source" else key] = value
-            component_edges.append({"data": edge_data})
+            colon_id = _to_colon_form(component_id)
+            current_location = protein_node_map[protein_id]["data"].get("location", "")
+            locations_for_protein = [v for v in current_location.split(",") if v]
+            if colon_id not in locations_for_protein:
+                locations_for_protein.append(colon_id)
+            protein_node_map[protein_id]["data"]["location"] = ",".join(locations_for_protein)
 
         for values in protein_node_map.values():
             response["nodes"].append(values)
-        response["nodes"].extend(component_nodes.values())
-        response["edges"].extend(component_edges)
         
 
         logger.info(

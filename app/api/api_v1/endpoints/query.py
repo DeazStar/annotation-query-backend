@@ -924,34 +924,7 @@ def cell_component(
             component_id = str(component_id)
             return component_id.replace("_", ":", 1) if component_id.startswith("GO_") else component_id
 
-        # Proteins may be localised via either relationship type.
-        LOCALIZATION_PREDICATES = ("located_in", "part_of")
-
-        # (protein_id, component_id) pairs that have a localization relationship.
-        located_pairs = []
-
-        if settings.DATABASE_TYPE.get("type") in ["mork", "mork_cli"]:
-            located_pairs = db_instance.find_localized_proteins(protein_ids, location_ids, species=species)
-        else:
-            escaped_protein_ids = ", ".join(
-                f"'{protein_id.replace(chr(39), chr(39) * 2)}'" for protein_id in protein_ids
-            )
-            escaped_location_ids = ", ".join(
-                f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
-            )
-
-            relationship_pattern = "|".join(LOCALIZATION_PREDICATES)
-            query = f"""
-MATCH (protein:protein)-[relationship:{relationship_pattern}]->
-      (component:cellular_component)
-WHERE protein.id IN [{escaped_protein_ids}]
-  AND component.id IN [{escaped_location_ids}]
-RETURN protein.id AS protein_id, component.id AS component_id
-"""
-            result = db_instance.run_query(query)
-            located_pairs = [
-                (record["protein_id"], record["component_id"]) for record in result
-            ]
+        located_pairs = db_instance.find_localized_proteins(protein_ids, location_ids, species=species)
 
         # Only protein nodes are returned. The frontend reads each protein's
         # "location" field (comma-separated GO IDs, colon form) to drive the

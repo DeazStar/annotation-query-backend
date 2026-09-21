@@ -7,11 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir --timeout 300 --retries 10 -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 # Compile the C++ extension
-RUN pip install --no-cache-dir --timeout 300 --retries 10 .
+RUN pip install --no-cache-dir .
 
 # ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.10-slim

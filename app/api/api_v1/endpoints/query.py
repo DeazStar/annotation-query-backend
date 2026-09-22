@@ -727,122 +727,6 @@ def get_annotation_by_id(
 
     return response_data
 
-
-def _repair_mork_sexpr(line: str) -> str:
-    """
-    Repair truncated string literals in MORK S-expression output.
-    MORK without interning limits symbols to 63 bytes. String literals longer than
-    63 bytes get truncated before the closing quotation mark, producing malformed
-    MeTTa syntax like `(node description (...) "A long text...))` without the closing `"`.
-    This function detects unclosed string literals and inserts the closing quote before
-    the outer closing parentheses.
-    """
-    stripped = line.strip()
-    if not stripped:
-        return line
-
-    in_quote = False
-    open_parens_outside_quotes = 0
-    i = 0
-    while i < len(line):
-        ch = line[i]
-        if ch == "\\" and in_quote and i + 1 < len(line):
-            i += 2
-            continue
-        if ch == '"':
-            in_quote = not in_quote
-        elif not in_quote:
-            if ch == "(":
-                open_parens_outside_quotes += 1
-            elif ch == ")":
-                open_parens_outside_quotes = max(0, open_parens_outside_quotes - 1)
-        i += 1
-
-    if in_quote:
-        idx = len(line)
-        parens_found = 0
-        while idx > 0 and parens_found < open_parens_outside_quotes:
-            idx -= 1
-            if line[idx] == ")":
-                parens_found += 1
-            elif line[idx] not in (" ", "\t", "\r", "\n"):
-                idx += 1
-                break
-        return line[:idx] + '"' + line[idx:]
-    return line
-
-
-def _repair_mork_output(raw: str) -> str:
-    return "\n".join(_repair_mork_sexpr(line) for line in raw.splitlines())
-
-
-def _clean_mork_val(v):
-    if isinstance(v, list):
-        if len(v) == 1:
-            v = v[0]
-        else:
-            v = " ".join(str(x) for x in v)
-    if isinstance(v, str):
-        v = v.strip()
-        if len(v) >= 2 and v.startswith('"') and v.endswith('"'):
-            v = v[1:-1]
-    return v
-
-
-def _run_mork_single_pattern(db_instance, pattern_str: str, template_str: str):
-    """
-    Executes a single MORK pattern query safely, repairing any truncated
-    string literals produced by MORK's 63-byte symbol buffer limit.
-    """
-    if hasattr(db_instance, "_run_single_pattern"):
-        import hashlib
-        import uuid
-        from app.services.mork_cli_generator import _get_session
-
-        dataset_id = hashlib.md5(str(db_instance.dataset_path.resolve()).encode()).hexdigest()[:8]
-        target_space = f"mork_{dataset_id}"
-        act_file = db_instance.dataset_path / db_instance.act_filename
-        shm_act = Path("/dev/shm") / f"{target_space}.act"
-
-        if not shm_act.exists() or (act_file.stat().st_mtime > shm_act.stat().st_mtime):
-            try:
-                temp_shm = Path("/dev/shm") / f"{shm_act.name}.tmp.{uuid.uuid4().hex}"
-                os.symlink(act_file.resolve(), temp_shm)
-                os.replace(temp_shm, shm_act)
-            except Exception as e:
-                if not shm_act.exists():
-                    logger.warning(f"SHM Symlink update failed: {e}")
-
-        metta_query = f"(exec 0 (I (ACT {target_space} {pattern_str})) (, {template_str}))"
-        query_file = Path("/dev/shm") / f"query_{uuid.uuid4().hex}.metta"
-        try:
-            fd = os.open(query_file, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, "w") as f:
-                f.write(metta_query)
-            session = _get_session(str(db_instance.dataset_path))
-            result = session.exec_query(str(query_file))
-            raw = result.stdout
-            actual = raw.split("result:", 1)[1].strip() if "result:" in raw else raw.strip()
-            if not actual:
-                return []
-            repaired = _repair_mork_output(actual)
-            try:
-                return db_instance.metta.parse_all(repaired)
-            except Exception as e:
-                logger.warning(f"Failed to parse MORK output: {e}\nRaw: {actual}")
-                return []
-        except Exception as e:
-            logger.error(f"MORK query error: {e}")
-            return []
-        finally:
-            if query_file.exists():
-                try:
-                    query_file.unlink()
-                except Exception:
-                    pass
-    return []
-
-
 @router.get("/localized-graph")
 def cell_component(
     id: str = FQuery(..., description="The annotation ID"),
@@ -1024,89 +908,23 @@ def cell_component(
         species = (getattr(annotation, "species", None) or "human") if annotation else "human"
         db_instance = get_db_instance(species)
 
-        # --- Fetch direct protein -> cellular_component matches per backend ---
+        # The frontend sends GO IDs colon-separated (GO:0005634) but they are
+        # stored underscore-separated (GO_0005634). Query with the stored
+        # form; the colon form is restored before returning.
         protein_ids = [protein_id for protein_id in proteins if protein_id]
         location_ids = []
         for location in locations:
             location = location.strip().upper()
             if not location:
                 continue
-            # The frontend sends GO IDs colon-separated (GO:0005634) but they
-            # are stored underscore-separated (GO_0005634). Query with the
-            # stored form; the colon form is restored before returning.
             location_ids.append(location.replace(":", "_"))
 
         def _to_colon_form(component_id):
             """GO_0005634 -> GO:0005634, for the frontend's location field."""
-            return str(component_id).replace("_", ":", 1) if str(component_id).startswith("GO_") else str(component_id)
+            component_id = str(component_id)
+            return component_id.replace("_", ":", 1) if component_id.startswith("GO_") else component_id
 
-        # Proteins may be localised via either relationship type.
-        LOCALIZATION_PREDICATES = ("located_in", "part_of")
-
-        # (protein_id, component_id) pairs that have a localization relationship.
-        located_pairs = []
-
-        if settings.DATABASE_TYPE.get("type") in ["mork", "mork_cli"]:
-            for protein_id in protein_ids:
-                for location_id in location_ids:
-                    source = f"protein {protein_id}"
-                    target = f"cellular_component {location_id}"
-                    for predicate in LOCALIZATION_PREDICATES:
-                        atoms = _run_mork_single_pattern(
-                            db_instance,
-                            f"({predicate} ({source}) ({target}))",
-                            f"(tmp (edge {predicate} ({source}) ({target})))",
-                        )
-                        if atoms:
-                            located_pairs.append((protein_id, location_id))
-                            break
-
-        elif settings.DATABASE_TYPE.get("type") == "metta":
-
-            def _run_metta_pattern(match_clause, return_clause):
-                query_code = f"!(match &space (, {match_clause}) (, {return_clause}))"
-                try:
-                    result = db_instance.run_query(query_code)
-                except Exception as e:
-                    logger.warning(f"MeTTa query error: {e}\nQuery: {query_code}")
-                    return []
-                if not result:
-                    return []
-                return result[0] if isinstance(result[0], list) else result
-
-            for protein_id in protein_ids:
-                for location_id in location_ids:
-                    source = f"protein {protein_id}"
-                    target = f"cellular_component {location_id}"
-                    for predicate in LOCALIZATION_PREDICATES:
-                        matched = _run_metta_pattern(
-                            f"({predicate} ({source}) ({target}))",
-                            f"(edge {predicate} ({source}) ({target}))",
-                        )
-                        if matched:
-                            located_pairs.append((protein_id, location_id))
-                            break
-
-        else:
-            escaped_protein_ids = ", ".join(
-                f"'{protein_id.replace(chr(39), chr(39) * 2)}'" for protein_id in protein_ids
-            )
-            escaped_location_ids = ", ".join(
-                f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
-            )
-
-            relationship_pattern = "|".join(LOCALIZATION_PREDICATES)
-            query = f"""
-MATCH (protein:protein)-[relationship:{relationship_pattern}]->
-      (component:cellular_component)
-WHERE protein.id IN [{escaped_protein_ids}]
-  AND component.id IN [{escaped_location_ids}]
-RETURN protein.id AS protein_id, component.id AS component_id
-"""
-            result = db_instance.run_query(query)
-            located_pairs = [
-                (record["protein_id"], record["component_id"]) for record in result
-            ]
+        located_pairs = db_instance.find_localized_proteins(protein_ids, location_ids, species=species)
 
         # Only protein nodes are returned. The frontend reads each protein's
         # "location" field (comma-separated GO IDs, colon form) to drive the

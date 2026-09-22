@@ -128,6 +128,28 @@ class MorkQueryGenerator:
         else:
             raise ValueError("query must be a tuple or a list of tuples")
 
+    def find_localized_proteins(self, protein_ids, location_ids, species="human"):
+        """Returns (protein_id, location_id) pairs for proteins located_in or
+        part_of the given cellular_component location ids."""
+        LOCALIZATION_PREDICATES = ("located_in", "part_of")
+        pairs_found = []
+        for protein_id in protein_ids:
+            for location_id in location_ids:
+                for predicate in LOCALIZATION_PREDICATES:
+                    found_id = self.generate_id()
+                    pattern = (
+                        f"({predicate} (protein {protein_id}) (cellular_component {location_id}))",
+                    )
+                    template = (
+                        f"({found_id} ({predicate} (protein {protein_id}) (cellular_component {location_id})))",
+                    )
+                    query = (pattern, template, "query", found_id)
+                    result = self.run_query(query, species=species)
+                    if result and result[0]:
+                        pairs_found.append((protein_id, location_id))
+                        break
+        return pairs_found
+
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
         nodes = requests["nodes"]

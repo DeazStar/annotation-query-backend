@@ -37,6 +37,7 @@ from app.events.redis_event import RedisStopEvent
 from app.core.config import settings
 import jwt
 import re
+from copy import deepcopy
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -726,13 +727,12 @@ def get_annotation_by_id(
 
     return response_data
 
-
 @router.get("/localized-graph")
 def cell_component(
     id: str = FQuery(..., description="The annotation ID"),
     locations: str = FQuery(..., description="Comma-separated GO term IDs"),
     current_user_id: str = Depends(get_current_user),
-    db_instance=Depends(get_db_instance),
+    schema_manager: SchemaManager = Depends(get_schema_manager),
 ):
 
     # get annotation id and get go term id
@@ -904,6 +904,10 @@ def cell_component(
                         protein_node_map[protein_raw_id] = {}
                     protein_node_map[protein_raw_id]["data"] = {**single_node, "location": ""}
 
+        annotation = AnnotationStorageService.get_by_id(annotation_id)
+        species = (getattr(annotation, "species", None) or "human") if annotation else "human"
+        db_instance = get_db_instance(species)
+
         # The frontend sends GO IDs colon-separated (GO:0005634) but they are
         # stored underscore-separated (GO_0005634). Query with the stored
         # form; the colon form is restored before returning.
@@ -920,30 +924,12 @@ def cell_component(
             component_id = str(component_id)
             return component_id.replace("_", ":", 1) if component_id.startswith("GO_") else component_id
 
-        escaped_protein_ids = ", ".join(
-            f"'{protein_id.replace(chr(39), chr(39) * 2)}'" for protein_id in protein_ids
-        )
-        escaped_location_ids = ", ".join(
-            f"'{location_id.replace(chr(39), chr(39) * 2)}'" for location_id in location_ids
-        )
-
-        # Proteins may be localised via either relationship type.
-        query = f"""
-MATCH (protein:protein)-[relationship:located_in|part_of]->
-      (component:cellular_component)
-WHERE protein.id IN [{escaped_protein_ids}]
-  AND component.id IN [{escaped_location_ids}]
-RETURN protein.id AS protein_id, component.id AS component_id
-"""
-
-        result = db_instance.run_query(query)
+        located_pairs = db_instance.find_localized_proteins(protein_ids, location_ids, species=species)
 
         # Only protein nodes are returned. The frontend reads each protein's
         # "location" field (comma-separated GO IDs, colon form) to drive the
         # cell visualizer, and does not expect cellular_component nodes/edges.
-        for record in result:
-            protein_id = record["protein_id"]
-            component_id = record["component_id"]
+        for protein_id, component_id in located_pairs:
             if protein_id not in protein_node_map:
                 continue
             colon_id = _to_colon_form(component_id)

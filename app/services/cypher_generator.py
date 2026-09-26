@@ -994,11 +994,21 @@ RETURN protein.id AS protein_id, component.id AS component_id
         downstream_distance = node['properties'].get('downstream_distance', 0)
     
         # Normal properties (NOT start/end/interval fields)
+        prop_conditions = []
         for key, value in node['properties'].items():
             if key in ['start', 'end', 'interval_type', 'upstream_distance', 'downstream_distance']:
                 continue
             escaped = self._escape_regex(value)
-            properties.append(f"{var_name}.{key} =~ '(?i){escaped}'")
+            prop_conditions.append(f"{var_name}.{key} =~ '(?i){escaped}'")
+
+        logic = node.get('logic', 'AND')
+        if prop_conditions:
+            if logic == 'OR':
+                properties.append(f"({' OR '.join(prop_conditions)})")
+            elif logic == 'NOT':
+                properties.append(f"NOT ({' AND '.join(prop_conditions)})")
+            else:  # AND (default, unchanged behavior)
+                properties.extend(prop_conditions)
     
         # Interval logic with start and end
         if start is not None and end is not None:

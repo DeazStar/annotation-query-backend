@@ -211,6 +211,31 @@ if threading.current_thread() is threading.main_thread():
 
 # ---------------------------------------------------------------------------
 
+def _split_sexprs(text):
+    """Split concatenated top-level s-expressions into a list of clauses."""
+    clauses, depth, start, in_quote, i = [], 0, None, False, 0
+    while i < len(text):
+        ch = text[i]
+        if in_quote:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_quote = False
+        elif ch == '"':
+            in_quote = True
+        elif ch == "(":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and start is not None:
+                clauses.append(text[start:i + 1])
+                start = None
+        i += 1
+    return clauses or [text.strip()]
+
+
 class MorkCLIQueryGenerator(MorkQueryGenerator):
     def __init__(self, dataset_path, act_filename="annotation.act", species="human"):
         super().__init__(dataset_path=None)
@@ -630,9 +655,10 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                     logger.warning(f"SHM Symlink update failed: {e}")
 
         if len(pattern_tuple) == 1:
-            act_pattern = pattern_tuple[0]
-            template_body = template_str
-            metta_query = f'(exec 0 (I (ACT {target_space} {act_pattern})) (, {template_body}))'
+            sources = " ".join(
+                f"(ACT {target_space} {clause})" for clause in _split_sexprs(pattern_tuple[0])
+            )
+            metta_query = f'(exec 0 (I {sources}) (, {template_str}))'
         else:
             return self._resolve_chained_patterns(pattern_tuple, template_tuple, query, start_time)
         

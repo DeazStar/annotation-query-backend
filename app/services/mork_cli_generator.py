@@ -624,9 +624,32 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
         logger.info("Query executed", extra={"query": str(query_obj), "duration_ms": duration, "status": "capped" if _atom_cap else "success"})
         return [all_atoms]
 
+    def _run_boolean_query(self, query, species='human'):
+        """OR/NOT: run several single-pattern queries and combine the atoms."""
+        pattern_tuple, template_tuple, query_type, current_id = query[:4]
+        spec = query[4]
+
+        def run(pattern):
+            atoms = self.run_query(((pattern,), template_tuple, query_type, current_id), species=species)
+            return atoms[0] if atoms else []
+
+        if spec["logic"] == "OR":
+            merged, seen = [], set()
+            for pattern in spec["patterns"]:
+                for atom in run(pattern):
+                    key = str(atom)
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append(atom)
+            return [merged]
+        excluded = {str(atom) for atom in run(spec["exclude"])}
+        return [[atom for atom in run(spec["include"]) if str(atom) not in excluded]]
+
     def run_query(self, query, stop_event=None, species='human'):
         start_time = time.time()
-        pattern_tuple, template_tuple, query_type, _ = query
+        if len(query) > 4 and query[4]:
+            return self._run_boolean_query(query, species)
+        pattern_tuple, template_tuple, query_type, _ = query[:4]
 
         pattern_str = " ".join(pattern_tuple)
         template_str = " ".join(template_tuple)

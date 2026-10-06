@@ -522,14 +522,14 @@ RETURN protein.id AS protein_id, component.id AS component_id
 
                     if i == len(predicates) - 1:
                         if return_preds:
-                            return_clause = f"RETURN {', '.join(return_preds)}, {', '.join(node_ids)}"
+                            return_clause = f"RETURN {', '.join(return_preds)}, {', '.join(sorted(node_ids))}"
                         else:
-                            return_clause = f"RETURN {', '.join(node_ids)}"
+                            return_clause = f"RETURN {', '.join(sorted(node_ids))}"
 
                         # Combine all clauses
                         clause_list.append(f"{match_clause} {where_clause} {virtual_creation} {return_clause}")
                     else:
-                        with_clause = f"WITH {', '.join(return_preds)}, {', '.join(node_ids)}"
+                        with_clause = f"WITH {', '.join(return_preds)}, {', '.join(sorted(node_ids))}"
                         clause_list.append(f"{match_clause} {where_clause} {virtual_creation} {with_clause}")
 
                 list_of_node_ids = list(node_ids)

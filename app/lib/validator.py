@@ -113,7 +113,17 @@ def validate_request(request, schema, source):
             raise Exception(f"invalid predicate '{predicate['type']}': no such relationship between '{source_type}' and '{target_type}'")
 
     if request.get('logic') is not None:
-        predicate_map = {predicate['predicate_id']: predicate for predicate in predicates}
+        # 'logic' refers to predicates by id, so every id must name exactly one predicate.
+        # Checked only here: requests without 'logic' keep accepting repeated ids as before.
+        predicate_map = {}
+        for predicate in predicates:
+            predicate_id = predicate['predicate_id']
+            if predicate_id in predicate_map:
+                raise LogicValidationError(
+                    f"duplicate predicate_id '{predicate_id}'; when 'logic' is used, "
+                    "give every predicate its own predicate_id"
+                )
+            predicate_map[predicate_id] = predicate
         validate_logic(request['logic'], node_map, predicate_map)
 
     if source != 'hypothesis':

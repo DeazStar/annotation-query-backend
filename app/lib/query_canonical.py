@@ -7,6 +7,7 @@ def canonicalize_graph(request):
     """
     Deterministically renames node_id and predicate source/target/predicate_id
     to stable ids (e.g. n0, n1, ...; p0, p1, ...).
+    References inside the optional 'logic' section are renamed the same way.
     Returns a deep copy of the request with canonicalized IDs, and a map from old_id to new_id.
     Pathological symmetric cases may still collide, but this covers most real graphs.
     """
@@ -82,15 +83,60 @@ def canonicalize_graph(request):
     def get_predicate_sort_key(p):
         return (p.get('source', ''), p.get('target', ''), p.get('type', ''), json.dumps(p.get('properties', {}), sort_keys=True))
     
+    # Remember each predicate's id before renumbering, so 'logic' references can follow.
+    for p in predicates:
+        p['_old_id'] = p.get('predicate_id')
+
     predicates.sort(key=get_predicate_sort_key)
 
+    old_to_new_predicate = {}
     for i, p in enumerate(predicates):
         p['predicate_id'] = f"p{i}"
+        old_id = p.pop('_old_id')
+        if old_id is not None:
+            old_to_new_predicate[old_id] = p['predicate_id']
 
     req_copy['nodes'] = nodes
     req_copy['predicates'] = predicates
 
+    # 8. Rename references inside the optional boolean 'logic' section
+    if req_copy.get('logic') is not None:
+        req_copy['logic'] = _canonicalize_logic(req_copy['logic'], old_to_new_node, old_to_new_predicate)
+
     return req_copy, old_to_new_node
+
+
+def _canonicalize_logic(group, old_to_new_node, old_to_new_predicate):
+    """
+    Returns a canonical copy of a validated logic group (see validate_logic).
+
+    Node and predicate ids are renamed to their canonical ids, and the order of
+    children, predicate ids and property values is made deterministic, with
+    duplicates removed. Neither changes the meaning: AND, OR and NOT
+    ("none of them") all ignore order and repetition. Keys that are not part
+    of the format are dropped.
+    """
+    canonical = {'operator': group['operator']}
+
+    if 'nodes' in group:
+        target = group['nodes']
+        old_id = target['node_id']
+        canonical['nodes'] = {
+            'node_id': old_to_new_node.get(old_id, old_id),
+            'properties': {name: sorted(set(values)) for name, values in target['properties'].items()},
+        }
+    elif 'predicates' in group:
+        canonical['predicates'] = sorted(
+            {old_to_new_predicate.get(pid, pid) for pid in group['predicates']}
+        )
+    else:
+        children = [
+            _canonicalize_logic(child, old_to_new_node, old_to_new_predicate)
+            for child in group['children']
+        ]
+        canonical['children'] = sorted(children, key=lambda child: json.dumps(child, sort_keys=True))
+
+    return canonical
 
 def query_fingerprint(canonical_request, species, data_source, limit, node_only, properties, db_type=None):
     """
@@ -108,6 +154,12 @@ def query_fingerprint(canonical_request, species, data_source, limit, node_only,
         "db_type": db_type,
     }
     
+    # Added only when present, so fingerprints of requests without logic stay
+    # identical to the ones already stored with existing annotations.
+    logic = canonical_request.get('logic')
+    if logic is not None:
+        payload["logic"] = logic
+
     # Strip annotation_id and question if they somehow made it in
     if 'annotation_id' in payload:
         del payload['annotation_id']

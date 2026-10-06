@@ -315,6 +315,45 @@ def test_or_between_predicates_sharing_no_node_is_rejected():
     assert_rejected(request, "not supported yet: OR between predicates ['p0', 'p1'] that share no node")
 
 
+# --- Predicate ids must be unique when logic is used ------------------------
+
+def _give_predicate_ids(request, first_id, second_id):
+    """Set the ids of the two base predicates; None leaves one for the validator to assign."""
+    for predicate, predicate_id in zip(request["predicates"], (first_id, second_id)):
+        if predicate_id is not None:
+            predicate["predicate_id"] = predicate_id
+
+
+@pytest.mark.parametrize(
+    "first_id, second_id, duplicate",
+    [
+        ("x", "x", "x"),
+        # The first predicate gets the auto-assigned id 'p0', which collides with the given one.
+        (None, "p0", "p0"),
+    ],
+    ids=["same-id-sent-twice", "given-id-collides-with-assigned-id"],
+)
+def test_duplicate_predicate_ids_are_rejected_with_logic(first_id, second_id, duplicate):
+    request = make_request({"children": [predicate_group("NOT", [duplicate])]})
+    _give_predicate_ids(request, first_id, second_id)
+
+    assert_rejected(
+        request,
+        f"duplicate predicate_id '{duplicate}'; when 'logic' is used, give every predicate its own predicate_id",
+    )
+
+
+def test_duplicate_predicate_ids_are_still_accepted_without_logic():
+    # Without logic nothing refers to predicates by id, and canonicalization
+    # renames them to p0, p1, ... before any query is built.
+    request = make_request()
+    _give_predicate_ids(request, "x", "x")
+
+    validate_request(request, SCHEMA, None)
+
+    assert [predicate["predicate_id"] for predicate in request["predicates"]] == ["x", "x"]
+
+
 # --- Error type --------------------------------------------------------------
 
 def test_logic_error_is_a_value_error():

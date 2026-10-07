@@ -10,6 +10,7 @@ import pytest
 from app.lib.validator import (
     MAX_LOGIC_DEPTH,
     LogicValidationError,
+    negated_predicate_ends,
     validate_logic,
     validate_request,
 )
@@ -18,6 +19,7 @@ from app.lib.validator import (
 SCHEMA = {
     "gene_transcribed_to_transcript": {},
     "gene_genes_pathways_pathway": {},
+    "transcript_translates_to_protein": {},
 }
 
 
@@ -352,6 +354,90 @@ def test_duplicate_predicate_ids_are_still_accepted_without_logic():
     validate_request(request, SCHEMA, None)
 
     assert [predicate["predicate_id"] for predicate in request["predicates"]] == ["x", "x"]
+
+
+# --- NOT on a predicate: which end is kept -----------------------------------
+
+def edge(predicate_id, source, target):
+    """Return a bare predicate; negated_predicate_ends only reads ids and ends."""
+    return {"predicate_id": predicate_id, "type": "any", "source": source, "target": target}
+
+
+# gene n0 -> transcript n1 (p0), gene n0 -> pathway n2 (p1), transcript n1 -> protein n3 (p2)
+P0, P1, P2 = edge("p0", "n0", "n1"), edge("p1", "n0", "n2"), edge("p2", "n1", "n3")
+
+
+@pytest.mark.parametrize(
+    "negated, predicates, kept, far",
+    [
+        (P1, [P1], "n0", "n2"),
+        (P1, [P0, P1], "n0", "n2"),
+        (P2, [P0, P2], "n1", "n3"),
+        (P0, [P0, P2], "n1", "n0"),
+        (P0, [P0, P1], "n0", "n1"),
+    ],
+    ids=[
+        "whole-pattern-keeps-the-source",
+        "far-end-is-the-unshared-end",
+        "chain-negating-the-last-edge",
+        "chain-negating-the-first-edge-keeps-the-target",
+        "two-negated-edges-from-one-node",
+    ],
+)
+def test_negated_predicate_ends(negated, predicates, kept, far):
+    assert negated_predicate_ends(negated, predicates) == (kept, far)
+
+
+@pytest.mark.parametrize(
+    "negated, predicates, message",
+    [
+        (
+            P0, [P0, P1, P2],
+            "not supported yet: NOT on predicate 'p0', whose two nodes are both used by other predicates",
+        ),
+        (
+            edge("p0", "n0", "n0"), [edge("p0", "n0", "n0")],
+            "not supported yet: NOT on predicate 'p0', which starts and ends at the same node",
+        ),
+    ],
+    ids=["both-ends-used-elsewhere", "self-loop"],
+)
+def test_negated_predicate_without_a_far_end_is_rejected(negated, predicates, message):
+    with pytest.raises(LogicValidationError, match=f"^{re.escape(message)}$"):
+        negated_predicate_ends(negated, predicates)
+
+
+def test_not_on_the_only_predicate_is_accepted():
+    request = {
+        "nodes": [
+            {"node_id": "n0", "id": "", "type": "gene", "properties": {}},
+            {"node_id": "n2", "id": "", "type": "pathway", "properties": {}},
+        ],
+        "predicates": [{"type": "genes pathways", "source": "n0", "target": "n2"}],
+        "logic": {"children": [predicate_group("NOT", ["p0"])]},
+    }
+
+    validate_request(request, SCHEMA, None)
+
+
+def test_validator_rejects_not_when_both_ends_are_used_elsewhere():
+    request = make_request({"children": [predicate_group("NOT", ["p0"])]})
+    request["nodes"].append({"node_id": "n3", "id": "", "type": "protein", "properties": {}})
+    request["predicates"].append({"type": "translates to", "source": "n1", "target": "n3"})
+
+    assert_rejected(
+        request,
+        "not supported yet: NOT on predicate 'p0', whose two nodes are both used by other predicates",
+    )
+
+
+def test_predicate_in_two_groups_is_rejected():
+    request = make_request({"children": [
+        predicate_group("OR", ["p0", "p1"]),
+        predicate_group("NOT", ["p1"]),
+    ]})
+
+    assert_rejected(request, "predicate 'p1' is used in more than one predicate group")
 
 
 # --- Error type --------------------------------------------------------------

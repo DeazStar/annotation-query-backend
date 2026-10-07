@@ -277,13 +277,7 @@ def _validate_predicate_group(group, predicate_map):
             negated_predicate_ends(predicate_map[predicate_id], all_predicates)
 
     if group['operator'] == 'OR' and len(predicate_ids) > 1:
-        endpoints = [
-            {predicate_map[pid]['source'], predicate_map[pid]['target']} for pid in predicate_ids
-        ]
-        if not set.intersection(*endpoints):
-            raise LogicValidationError(
-                f"not supported yet: OR between predicates {predicate_ids} that share no node"
-            )
+        or_predicate_ends(predicate_ids, list(predicate_map.values()))
 
 
 def negated_predicate_ends(predicate, predicates):
@@ -325,6 +319,91 @@ def negated_predicate_ends(predicate, predicates):
     if target in used_elsewhere:
         return target, source
     return source, target
+
+
+def counted_nodes_and_predicates(request):
+    """Return (nodes, predicates) of a validated request that can appear in its results.
+
+    Predicates under NOT and their far nodes (see negated_predicate_ends) only
+    describe edges that must not exist, so they are left out of label counts;
+    otherwise a count would show e.g. "pathway: 0" for a node never returned.
+    """
+    nodes = request.get('nodes', [])
+    predicates = request.get('predicates', [])
+    logic = request.get('logic')
+    if not logic or logic.get('operator') != 'AND':
+        return nodes, predicates
+
+    negated_ids = {
+        predicate_id
+        for group in logic.get('children', [])
+        if 'predicates' in group and group.get('operator') == 'NOT'
+        for predicate_id in group['predicates']
+    }
+    if not negated_ids:
+        return nodes, predicates
+
+    far_ids = {
+        negated_predicate_ends(predicate, predicates)[1]
+        for predicate in predicates
+        if predicate['predicate_id'] in negated_ids
+    }
+    return (
+        [node for node in nodes if node['node_id'] not in far_ids],
+        [predicate for predicate in predicates if predicate['predicate_id'] not in negated_ids],
+    )
+
+
+def or_predicate_ends(predicate_ids, predicates):
+    """Return (kept_node_id, {predicate_id: far_node_id}) for an OR group of predicates.
+
+    "OR [p0, p1]" means: return the kept node when at least one of these
+    edges connects it to a node like that edge's far node, together with
+    whichever of those edges exist. Every backend uses this function:
+      - the predicates must share exactly one node, which is kept;
+      - each predicate's other end is its far node, and no other predicate
+        may use it, so each alternative stands alone.
+
+    Args:
+        predicate_ids: The ids in the OR group (two or more).
+        predicates: All predicates of the request.
+
+    Raises:
+        LogicValidationError: If the group does not have that shape.
+    """
+    by_id = {predicate['predicate_id']: predicate for predicate in predicates}
+    group = [by_id[predicate_id] for predicate_id in predicate_ids]
+
+    for predicate in group:
+        if predicate['source'] == predicate['target']:
+            raise LogicValidationError(
+                f"not supported yet: OR on predicate '{predicate['predicate_id']}', "
+                "which starts and ends at the same node"
+            )
+
+    shared = set.intersection(*({predicate['source'], predicate['target']} for predicate in group))
+    if not shared:
+        raise LogicValidationError(f"not supported yet: OR between predicates {predicate_ids} that share no node")
+    if len(shared) > 1:
+        raise LogicValidationError(f"not supported yet: OR between predicates {predicate_ids} that share both nodes")
+    kept_id = shared.pop()
+
+    far_ids = {}
+    for predicate in group:
+        predicate_id = predicate['predicate_id']
+        far_id = predicate['target'] if predicate['source'] == kept_id else predicate['source']
+        used_elsewhere = any(
+            far_id in (other['source'], other['target'])
+            for other in predicates
+            if other['predicate_id'] != predicate_id
+        )
+        if used_elsewhere:
+            raise LogicValidationError(
+                f"not supported yet: OR on predicate '{predicate_id}', whose node '{far_id}' "
+                "is also used by other predicates"
+            )
+        far_ids[predicate_id] = far_id
+    return kept_id, far_ids
 
 
 def _require_predicates_in_one_group(groups):

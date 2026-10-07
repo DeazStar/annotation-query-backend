@@ -8,7 +8,7 @@ from collections import Counter
 import re
 from app.lib.db_resilience import ResilientDriver, RetryPolicy, QueryType, QueryTimeoutConfig
 from app.lib.result_formatter import Result_Formatter
-from app.lib.validator import LogicValidationError, negated_predicate_ends
+from app.lib.validator import LogicValidationError, negated_predicate_ends, or_predicate_ends
 from collections import deque
 
 load_dotenv()
@@ -186,7 +186,8 @@ RETURN protein.id AS protein_id, component.id AS component_id
         return None
 
     def _build_call_subquery(self, predicates, node_map, predicate_map,
-                            anchor_var, limit=None, node_only=False, inner_limit=None, strict=True):
+                            anchor_var, limit=None, node_only=False, inner_limit=None, strict=True,
+                            or_groups=None):
         """
         Build a CALL-subquery-scoped Cypher query using independent CALL arms.
 
@@ -323,7 +324,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
         # strict=True (default): all arms must return data, otherwise the whole
         # result is empty. strict=False: return partial results even if some arms
         # have no data.
-        size_checks = ' AND '.join(f"size({alias}) > 0" for alias in all_aliases)
+        size_checks = self._arm_size_checks(arms, all_aliases, or_groups or [])
         strict_where = f"WITH * WHERE {size_checks}" if strict else ""
 
         parts = [outer_match, outer_where] + call_blocks + [strict_where, outer_return, limit_clause]
@@ -335,8 +336,14 @@ RETURN protein.id AS protein_id, component.id AS component_id
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         self._attach_logic_groups(requests)
         requests = self._remove_negated_predicates(requests)
+        or_groups = self._or_predicate_groups(requests)
 
         if self.is_in_list_request(requests):
+            if or_groups:
+                raise LogicValidationError(
+                    "not supported yet by the Cypher backend: OR between predicates together with "
+                    "comma-separated values; use an OR group in 'logic' for those values instead"
+                )
             return self.in_list_query_generator(requests, limit)
 
         nodes = requests['nodes']
@@ -401,12 +408,16 @@ RETURN protein.id AS protein_id, component.id AS component_id
 
         else:
             # Try CALL subquery pattern first — avoids Cartesian product row explosion
-            anchor_var = self._find_anchor_node(predicates, node_map=node_map)
+            if or_groups:
+                anchor_var = self._or_anchor(or_groups)
+            else:
+                anchor_var = self._find_anchor_node(predicates, node_map=node_map)
+            or_predicate_ids = {pid for _, pids in or_groups for pid in pids}
 
             if anchor_var is not None:
                 cypher_query, aliases, outer_nodes = self._build_call_subquery(
                     predicates, node_map, predicate_map, anchor_var, limit, node_only,
-                    inner_limit=None
+                    inner_limit=None, or_groups=[pids for _, pids in or_groups]
                 )
                 cypher_queries.append(cypher_query)
 
@@ -418,8 +429,11 @@ RETURN protein.id AS protein_id, component.id AS component_id
                     all_node_ids.add(pred['target'])
                 list_of_node_ids = sorted(all_node_ids)
 
-                # Build flattened match/where for count queries (old-style, no CALL)
+                # Build flattened match/where for count queries (old-style, no CALL).
+                # OR'd predicates are matched optionally afterwards (_or_count_tail).
                 for pred in predicates:
+                    if pred['predicate_id'] in or_predicate_ids:
+                        continue
                     pred_id   = pred['predicate_id']
                     pred_type = pred['type'].replace(' ', '_').lower()
                     source_var = pred['source']
@@ -453,6 +467,15 @@ RETURN protein.id AS protein_id, component.id AS component_id
                         )
                     return_preds.append(pred_id)
 
+                optional_tail = ""
+                if or_groups:
+                    if anchor_var not in node_ids:
+                        # Every predicate is OR'd: the count query starts from the anchor alone.
+                        match_preds.insert(0, self.match_node(node_map[anchor_var], anchor_var))
+                        where_preds.extend(self.where_construct(node_map[anchor_var], anchor_var))
+                        node_ids.add(anchor_var)
+                    optional_tail = self._or_count_tail(or_groups, predicate_map, node_map)
+
                 full_return_preds = return_preds + list_of_node_ids
                 query_clauses = {
                     "match_preds": match_preds,
@@ -462,6 +485,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
                     "return_preds": return_preds,
                     "predicates": predicates,
                     "virtual_defs": virtual_defs,
+                    "optional_tail": optional_tail,
                 }
                 count = self.construct_count_clause(query_clauses, node_map, predicate_map)
                 cypher_queries.extend(count)
@@ -614,6 +638,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
             {where_no_clause}
             {match_clause}
             {where_clause}
+            {query_clauses.get('optional_tail', '')}
             {virtual_setup}
             RETURN ({total_nodes_expr}) AS total_nodes, ({total_edges_expr}) AS total_edges
         '''
@@ -637,6 +662,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
             {where_no_clause}
             {match_clause}
             {where_clause}
+            {query_clauses.get('optional_tail', '')}
             {virtual_setup}
             {return_label_clause}
         '''
@@ -1052,11 +1078,10 @@ RETURN protein.id AS protein_id, component.id AS component_id
         for group in logic['children']:
             if 'predicates' not in group:
                 continue
-            if group['operator'] == 'OR':
-                raise LogicValidationError("not supported yet by the Cypher backend: OR between predicates")
             if group['operator'] == 'NOT':
                 negated_ids.update(group['predicates'])
             # AND: the predicates must exist, which every predicate already requires.
+            # OR: handled by _or_predicate_groups.
         if not negated_ids:
             return requests
 
@@ -1082,6 +1107,80 @@ RETURN protein.id AS protein_id, component.id AS component_id
             'nodes': [node for node in requests['nodes'] if node['node_id'] not in far_ids],
             'predicates': [p for p in predicates if p['predicate_id'] not in negated_ids],
         }
+
+    def _or_predicate_groups(self, requests):
+        """Return [(kept_node_id, predicate_ids)] for each OR group of two or more predicates.
+
+        An OR group of one predicate means the same as that predicate alone,
+        so it is not returned.
+        """
+        logic = requests.get('logic')
+        if not logic or logic['operator'] != 'AND':
+            return []
+        groups = []
+        for group in logic['children']:
+            if 'predicates' in group and group['operator'] == 'OR' and len(group['predicates']) > 1:
+                kept_id, _ = or_predicate_ends(group['predicates'], requests['predicates'])
+                groups.append((kept_id, group['predicates']))
+        return groups
+
+    @staticmethod
+    def _or_anchor(or_groups):
+        """Return the node every OR group is kept on; it must be the CALL anchor.
+
+        Each OR'd predicate then becomes its own CALL arm, and the arms' size
+        checks can be ORed. Groups kept on different nodes would need two
+        anchors, so they are not supported yet.
+        """
+        kept_ids = {kept_id for kept_id, _ in or_groups}
+        if len(kept_ids) > 1:
+            raise LogicValidationError(
+                f"not supported yet by the Cypher backend: OR groups on different nodes {sorted(kept_ids)}"
+            )
+        return kept_ids.pop()
+
+    @staticmethod
+    def _arm_size_checks(arms, aliases, or_groups):
+        """Return the condition that keeps an anchor: every arm must match, except
+        that the arms of one OR group need only one of them to match."""
+        alias_of = {pred['predicate_id']: alias for arm, alias in zip(arms, aliases) for pred in arm}
+        group_of = {pid: index for index, group in enumerate(or_groups) for pid in group}
+
+        checks, done_groups = [], set()
+        for arm, alias in zip(arms, aliases):
+            index = group_of.get(arm[0]['predicate_id'])
+            if index is None:
+                checks.append(f"size({alias}) > 0")
+            elif index not in done_groups:
+                done_groups.add(index)
+                options = [f"size({alias_of[pid]}) > 0" for pid in or_groups[index]]
+                checks.append("(" + " OR ".join(options) + ")")
+        return " AND ".join(checks)
+
+    def _or_count_tail(self, or_groups, predicate_map, node_map):
+        """Return OPTIONAL MATCH lines for OR'd predicates, then the OR filter.
+
+        A count query is one flat MATCH, which can only mean AND. OPTIONAL MATCH
+        leaves a missing edge as null instead of dropping the row, and
+        COUNT(DISTINCT x) ignores nulls, so the counts match the result query.
+        """
+        lines, filters = [], []
+        for kept_id, predicate_ids in or_groups:
+            for predicate_id in predicate_ids:
+                predicate = predicate_map[predicate_id]
+                kept_is_source = predicate['source'] == kept_id
+                far_id = predicate['target'] if kept_is_source else predicate['source']
+                far_pattern = self.match_node(node_map[far_id], far_id)
+                relationship = f"-[{predicate_id}:{predicate['type'].replace(' ', '_').lower()}]->"
+                if kept_is_source:
+                    pattern = f"({kept_id}){relationship}{far_pattern}"
+                else:
+                    pattern = f"{far_pattern}{relationship}({kept_id})"
+                far_conditions = self.where_construct(node_map[far_id], far_id)
+                where = f" WHERE {' AND '.join(far_conditions)}" if far_conditions else ""
+                lines.append(f"OPTIONAL MATCH {pattern}{where}")
+            filters.append("(" + " OR ".join(f"{pid} IS NOT NULL" for pid in predicate_ids) + ")")
+        return "\n".join(lines + [f"WITH * WHERE {' AND '.join(filters)}"])
 
     def _render_negated_predicate(self, predicate, far_node, var_name, kept_is_source):
         """Render "no such edge from this node" as NOT EXISTS { MATCH ... }.

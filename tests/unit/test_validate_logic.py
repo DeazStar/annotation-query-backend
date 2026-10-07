@@ -11,6 +11,7 @@ from app.lib.validator import (
     MAX_LOGIC_DEPTH,
     LogicValidationError,
     negated_predicate_ends,
+    or_predicate_ends,
     validate_logic,
     validate_request,
 )
@@ -438,6 +439,50 @@ def test_predicate_in_two_groups_is_rejected():
     ]})
 
     assert_rejected(request, "predicate 'p1' is used in more than one predicate group")
+
+
+# --- OR between predicates: shared kept node, standalone far nodes -----------
+
+def test_or_predicate_ends_returns_the_shared_node_and_each_far_node():
+    # p0: n0 -> n1 and p1: n0 -> n2 share gene n0.
+    assert or_predicate_ends(["p0", "p1"], [P0, P1]) == ("n0", {"p0": "n1", "p1": "n2"})
+
+
+def test_or_predicate_ends_works_when_the_kept_node_is_a_target():
+    into_n1 = edge("p5", "n5", "n1")
+
+    assert or_predicate_ends(["p0", "p5"], [P0, into_n1]) == ("n1", {"p0": "n0", "p5": "n5"})
+
+
+@pytest.mark.parametrize(
+    "predicate_ids, predicates, message",
+    [
+        (
+            ["p0", "p1"], [P0, P1, P2],
+            "not supported yet: OR on predicate 'p0', whose node 'n1' is also used by other predicates",
+        ),
+        (
+            ["p0", "p9"], [P0, edge("p9", "n1", "n0")],
+            "not supported yet: OR between predicates ['p0', 'p9'] that share both nodes",
+        ),
+        (
+            ["p0", "p8"], [P0, edge("p8", "n0", "n0")],
+            "not supported yet: OR on predicate 'p8', which starts and ends at the same node",
+        ),
+    ],
+    ids=["far-node-used-elsewhere", "two-edges-between-the-same-nodes", "self-loop"],
+)
+def test_or_group_without_standalone_alternatives_is_rejected(predicate_ids, predicates, message):
+    with pytest.raises(LogicValidationError, match=f"^{re.escape(message)}$"):
+        or_predicate_ends(predicate_ids, predicates)
+
+
+def test_validator_rejects_or_when_a_far_node_is_used_elsewhere():
+    request = make_request({"children": [predicate_group("OR", ["p0", "p1"])]})
+    request["nodes"].append({"node_id": "n3", "id": "", "type": "protein", "properties": {}})
+    request["predicates"].append({"type": "translates to", "source": "n1", "target": "n3"})
+
+    assert_rejected(request, "not supported yet: OR on predicate 'p0', whose node 'n1' is also used by other predicates")
 
 
 # --- Error type --------------------------------------------------------------

@@ -621,15 +621,181 @@ def test_logic_of_one_request_does_not_leak_into_the_next(generator):
     assert [one_line(q) for q in queries] == [one_line(q) for q in CASES["node-only-with-limit"].expected]
 
 
-def test_or_between_predicates_is_rejected_until_supported(generator):
+def test_or_between_predicates_with_list_values_is_rejected(generator):
+    # The list path has no CALL arms to OR; logic OR groups can replace the commas.
     case = Case(
-        request={**GENE_TRANSCRIPT_PATHWAY, "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]})},
+        request={
+            "nodes": [node("n0", "gene", {"gene_name": "FTO,BRCA1"}), node("n1", "transcript"), node("n2", "pathway")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
         options={},
         expected=(),
     )
 
-    with pytest.raises(LogicValidationError, match="^not supported yet by the Cypher backend: OR between predicates$"):
+    with pytest.raises(LogicValidationError, match=re.escape(
+        "not supported yet by the Cypher backend: OR between predicates together with "
+        "comma-separated values; use an OR group in 'logic' for those values instead"
+    )):
         generate(generator, case)
+
+
+def test_or_groups_on_different_nodes_are_rejected(generator):
+    # Each OR group needs its kept node to be the CALL anchor, and there is only one anchor.
+    case = Case(
+        request={
+            "nodes": [
+                node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "pathway"),
+                node("n3", "transcript"), node("n4", "protein"), node("n5", "exon"),
+            ],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+                predicate("p2", "transcribed to", "n0", "n3"),
+                predicate("p3", "translates to", "n3", "n4"),
+                predicate("p4", "includes", "n3", "n5"),
+            ],
+            "logic": logic_tree(
+                {"operator": "OR", "predicates": ["p0", "p1"]},
+                {"operator": "OR", "predicates": ["p3", "p4"]},
+            ),
+        },
+        options={},
+        expected=(),
+    )
+
+    with pytest.raises(LogicValidationError, match=re.escape(
+        "not supported yet by the Cypher backend: OR groups on different nodes ['n0', 'n3']"
+    )):
+        generate(generator, case)
+
+
+# --- Requests with OR between predicates (edges) --------------------------------
+#
+# The OR group's shared node is the CALL anchor, each OR'd predicate is its own
+# arm, and the arms' size checks are joined with OR. Count queries match the
+# OR'd predicates with OPTIONAL MATCH, since a flat MATCH can only mean AND.
+
+TRANSCRIPT_OR_PATHWAY_ARMS = """
+    CALL (n0) {{
+      MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+      RETURN collect(DISTINCT {{n1: n1, p0: p0}}) AS p0
+    }}
+    CALL (n0) {{
+      MATCH (n0)-[p1:genes_pathways]->(n2:pathway){pathway_where}
+      RETURN collect(DISTINCT {{n2: n2, p1: p1}}) AS p1
+    }}
+"""
+
+TRANSCRIPT_OR_PATHWAY_OPTIONAL = """
+    OPTIONAL MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+    OPTIONAL MATCH (n0)-[p1:genes_pathways]->(n2:pathway){pathway_where}
+    WITH * WHERE (p0 IS NOT NULL OR p1 IS NOT NULL)
+"""
+
+THREE_NODE_COUNTS = (
+    "RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes, "
+    "(COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges",
+    "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, COUNT(DISTINCT n2) AS n2_pathway, "
+    "COUNT(DISTINCT p0) AS p0_transcribed_to, COUNT(DISTINCT p1) AS p1_genes_pathways",
+)
+
+
+def or_edges_expected(gene_where, pathway_where=""):
+    """Expected queries for gene n0 with OR [p0 -> transcript n1, p1 -> pathway n2]."""
+    where = f"WHERE {gene_where}" if gene_where else ""
+    arms = TRANSCRIPT_OR_PATHWAY_ARMS.format(pathway_where=pathway_where)
+    optional = TRANSCRIPT_OR_PATHWAY_OPTIONAL.format(pathway_where=pathway_where)
+    return (
+        f"MATCH (n0:gene) {where} {arms} WITH * WHERE (size(p0) > 0 OR size(p1) > 0) RETURN n0, p0, p1",
+    ) + tuple(f"MATCH (n0:gene) {where} {optional} {ret}" for ret in THREE_NODE_COUNTS)
+
+
+OR_EDGE_CASES = {
+    "or-edges-only": Case(
+        request={**GENE_TRANSCRIPT_PATHWAY_BY_NAME, "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]})},
+        options={},
+        expected=or_edges_expected("n0.gene_name =~ '(?i)FTO'"),
+    ),
+    "or-kept-node-is-anchor-despite-far-filter": Case(
+        # Without OR, the filtered pathway would become the anchor and both edges
+        # would share one arm; the OR group's shared gene must be the anchor.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "transcript"), node("n2", "pathway", {"pathway_name": "Insulin signaling"})],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
+        options={},
+        expected=or_edges_expected("", " WHERE n2.pathway_name =~ '(?i)Insulin signaling'"),
+    ),
+    "or-next-to-a-required-chain": Case(
+        request={
+            "nodes": [
+                node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "pathway"),
+                node("n3", "transcript"), node("n4", "protein"),
+            ],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+                predicate("p2", "transcribed to", "n0", "n3"),
+                predicate("p3", "translates to", "n3", "n4"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
+        options={},
+        expected=(
+            "MATCH (n0:gene) WHERE n0.gene_name =~ '(?i)FTO' "
+            + TRANSCRIPT_OR_PATHWAY_ARMS.format(pathway_where="")
+            + """
+            CALL (n0) {
+              MATCH (n0)-[p2:transcribed_to]->(n3:transcript)
+              MATCH (n3)-[p3:translates_to]->(n4:protein)
+              RETURN collect(DISTINCT {n3: n3, p2: p2, n4: n4, p3: p3}) AS p2_p3
+            }
+            WITH * WHERE (size(p0) > 0 OR size(p1) > 0) AND size(p2_p3) > 0
+            RETURN n0, p0, p1, p2_p3
+            """,
+        ) + tuple(
+            "MATCH (n0:gene)-[p2:transcribed_to]->(n3:transcript), (n3:transcript)-[p3:translates_to]->(n4:protein) "
+            "WHERE n0.gene_name =~ '(?i)FTO' "
+            + TRANSCRIPT_OR_PATHWAY_OPTIONAL.format(pathway_where="")
+            + ret
+            for ret in (
+                "RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2) + COUNT(DISTINCT n3) "
+                "+ COUNT(DISTINCT n4)) AS total_nodes, (COUNT(DISTINCT p0) + COUNT(DISTINCT p1) + COUNT(DISTINCT p2) "
+                "+ COUNT(DISTINCT p3)) AS total_edges",
+                "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
+                "COUNT(DISTINCT n2) AS n2_pathway, COUNT(DISTINCT n3) AS n3_transcript, COUNT(DISTINCT n4) AS n4_protein, "
+                "COUNT(DISTINCT p0) AS p0_transcribed_to, COUNT(DISTINCT p1) AS p1_genes_pathways, "
+                "COUNT(DISTINCT p2) AS p2_transcribed_to, COUNT(DISTINCT p3) AS p3_translates_to",
+            )
+        ),
+    ),
+    "or-group-of-one-changes-nothing": Case(
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript")],
+            "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0"]}),
+        },
+        options={},
+        expected=gene_to_transcript("(n0:gene)", "n0.gene_name =~ '(?i)FTO'"),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(OR_EDGE_CASES))
+def test_or_edge_queries_match_snapshot(generator, name):
+    case = OR_EDGE_CASES[name]
+
+    queries = generate(generator, case)
+
+    assert [one_line(q) for q in queries] == [one_line(q) for q in case.expected]
 
 
 # --- Requests with NOT on a predicate (edge) -----------------------------------

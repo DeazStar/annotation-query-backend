@@ -342,3 +342,285 @@ def test_generated_text_does_not_depend_on_hash_seed():
         outputs.add(next(line for line in completed.stdout.splitlines() if line.startswith("QUERY:")))
 
     assert len(outputs) == 1, outputs
+
+
+# --- Requests with boolean 'logic' on node properties -------------------------
+#
+# Logic is written in its validated, canonical form (upper-case operators,
+# values as lists), because query_Generator always receives it that way.
+
+def logic_group(operator, node_id, properties):
+    """Return a property group: conditions on one node's properties."""
+    return {"operator": operator, "nodes": {"node_id": node_id, "properties": properties}}
+
+
+def logic_tree(*children, operator="AND"):
+    """Return a whole 'logic' section with the given top-level groups."""
+    return {"operator": operator, "children": list(children)}
+
+
+def gene_only(where):
+    """Expected queries for a request with one gene node and no predicates."""
+    return (
+        f"MATCH (n0:gene) WHERE {where} RETURN n0",
+        f"MATCH (n0:gene) WHERE {where} RETURN (COUNT(DISTINCT n0)) AS total_nodes, (0) AS total_edges",
+        f"MATCH (n0:gene) WHERE {where} RETURN COUNT(DISTINCT n0) AS n0_gene",
+    )
+
+
+def gene_to_transcript(gene, where):
+    """Expected queries for gene -> transcribed to -> transcript (simple chain path)."""
+    match = f"MATCH {gene}-[p0:transcribed_to]->(n1:transcript) WHERE {where}"
+    return (
+        f"{match} RETURN p0, n0, n1",
+        f"{match} RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1)) AS total_nodes, (COUNT(DISTINCT p0)) AS total_edges",
+        f"{match} RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
+        "COUNT(DISTINCT p0) AS p0_transcribed_to",
+    )
+
+
+GENE_NAME_OR_TYPE = "(n0.gene_name =~ '(?i)FTO' OR n0.gene_type =~ '(?i)protein_coding')"
+BRCA1_OR_FTO = "(n0.gene_name =~ '(?i)BRCA1' OR n0.gene_name =~ '(?i)FTO')"
+NOT_RETAINED_INTRON = "NOT coalesce({var}.transcript_type =~ '(?i)retained_intron', false)"
+
+LOGIC_CASES = {
+    # --- No predicates --------------------------------------------------------
+    "logic-or-is-the-only-filter": Case(
+        # Regression: a node whose only filter is in logic used to lose it.
+        # Properties are given out of order; the query lists them alphabetically.
+        request={
+            "nodes": [node("n0", "gene")],
+            "predicates": [],
+            "logic": logic_tree(logic_group("OR", "n0", {"gene_type": ["protein_coding"], "gene_name": ["FTO"]})),
+        },
+        options={},
+        expected=gene_only(GENE_NAME_OR_TYPE),
+    ),
+    "logic-not-next-to-own-filter": Case(
+        request={
+            "nodes": [node("n0", "gene", FTO)],
+            "predicates": [],
+            "logic": logic_tree(logic_group("NOT", "n0", {"gene_type": ["protein_coding"]})),
+        },
+        options={},
+        expected=gene_only(
+            "n0.gene_name =~ '(?i)FTO' AND NOT coalesce(n0.gene_type =~ '(?i)protein_coding', false)"
+        ),
+    ),
+    "logic-not-several-values": Case(
+        # NOT means "none of them": the values are ORed inside the NOT.
+        request={
+            "nodes": [node("n0", "gene", FTO)],
+            "predicates": [],
+            "logic": logic_tree(logic_group("NOT", "n0", {"gene_type": ["lncRNA", "pseudogene"]})),
+        },
+        options={},
+        expected=gene_only(
+            "n0.gene_name =~ '(?i)FTO' AND "
+            "NOT coalesce((n0.gene_type =~ '(?i)lncRNA' OR n0.gene_type =~ '(?i)pseudogene'), false)"
+        ),
+    ),
+    "logic-nested-groups": Case(
+        request={
+            "nodes": [node("n0", "gene")],
+            "predicates": [],
+            "logic": logic_tree({"operator": "OR", "children": [
+                logic_group("AND", "n0", {"gene_name": ["BRCA1"]}),
+                logic_group("AND", "n0", {"gene_name": ["FTO"], "gene_type": ["protein_coding"]}),
+            ]}),
+        },
+        options={},
+        expected=gene_only(
+            "(n0.gene_name =~ '(?i)BRCA1' OR (n0.gene_name =~ '(?i)FTO' AND n0.gene_type =~ '(?i)protein_coding'))"
+        ),
+    ),
+    "logic-or-root": Case(
+        request={
+            "nodes": [node("n0", "gene")],
+            "predicates": [],
+            "logic": logic_tree(
+                logic_group("AND", "n0", {"gene_name": ["BRCA1"]}),
+                logic_group("AND", "n0", {"gene_name": ["FTO"]}),
+                operator="OR",
+            ),
+        },
+        options={},
+        expected=gene_only(BRCA1_OR_FTO),
+    ),
+    "logic-values-are-escaped": Case(
+        # Same escaping as normal filters: '*' is escaped and quotes are removed.
+        request={
+            "nodes": [node("n0", "gene")],
+            "predicates": [],
+            "logic": logic_tree(logic_group("OR", "n0", {"gene_name": ["HLA-A*02", "it's"]})),
+        },
+        options={},
+        expected=gene_only("(n0.gene_name =~ '(?i)HLA-A\\*02' OR n0.gene_name =~ '(?i)its')"),
+    ),
+    # --- One predicate: simple chain path ---------------------------------------
+    "logic-one-predicate": Case(
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript")],
+            "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
+            "logic": logic_tree(logic_group("OR", "n1", {"transcript_type": ["lncRNA", "protein_coding"]})),
+        },
+        options={},
+        expected=gene_to_transcript(
+            "(n0:gene)",
+            "n0.gene_name =~ '(?i)FTO' AND "
+            "(n1.transcript_type =~ '(?i)lncRNA' OR n1.transcript_type =~ '(?i)protein_coding')",
+        ),
+    ),
+    "logic-on-node-pinned-by-id": Case(
+        # A node matched by id has no other WHERE condition, but its logic still applies.
+        request={
+            "nodes": [node("n0", "gene", node_ref="ENSG00000140718"), node("n1", "transcript")],
+            "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
+            "logic": logic_tree(logic_group("NOT", "n0", {"gene_type": ["lncRNA"]})),
+        },
+        options={},
+        expected=gene_to_transcript(
+            "(n0:gene {id: 'ENSG00000140718'})",
+            "NOT coalesce(n0.gene_type =~ '(?i)lncRNA', false)",
+        ),
+    ),
+    # --- Anchor + CALL path -------------------------------------------------------
+    "logic-anchor-two-arms": Case(
+        # The transcript's condition goes inside the transcript arm's CALL block.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "pathway"), node("n2", "transcript")],
+            "predicates": [
+                predicate("p0", "genes pathways", "n0", "n1"),
+                predicate("p1", "transcribed to", "n0", "n2"),
+            ],
+            "logic": logic_tree(
+                logic_group("OR", "n0", {"gene_name": ["BRCA1", "FTO"]}),
+                logic_group("NOT", "n2", {"transcript_type": ["retained_intron"]}),
+            ),
+        },
+        options={},
+        expected=(
+            f"""
+            MATCH (n0:gene)
+            WHERE {BRCA1_OR_FTO}
+            CALL (n0) {{
+              MATCH (n0)-[p0:genes_pathways]->(n1:pathway)
+              RETURN collect(DISTINCT {{n1: n1, p0: p0}}) AS p0
+            }}
+            CALL (n0) {{
+              MATCH (n0)-[p1:transcribed_to]->(n2:transcript)
+              WHERE {NOT_RETAINED_INTRON.format(var="n2")}
+              RETURN collect(DISTINCT {{n2: n2, p1: p1}}) AS p1
+            }}
+            WITH * WHERE size(p0) > 0 AND size(p1) > 0
+            RETURN n0, p0, p1
+            """,
+            f"""
+            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
+            WHERE {BRCA1_OR_FTO} AND {NOT_RETAINED_INTRON.format(var="n2")}
+            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
+                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
+            """,
+            f"""
+            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
+            WHERE {BRCA1_OR_FTO} AND {NOT_RETAINED_INTRON.format(var="n2")}
+            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_pathway,
+                   COUNT(DISTINCT n2) AS n2_transcript, COUNT(DISTINCT p0) AS p0_genes_pathways,
+                   COUNT(DISTINCT p1) AS p1_transcribed_to
+            """,
+        ),
+    ),
+    "logic-filter-picks-the-anchor": Case(
+        # gene -> transcript -> protein. Without logic the transcript (2 edges) is
+        # the anchor; a node filtered only by logic counts as filtered, so the gene is.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "transcript"), node("n2", "protein")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "translates to", "n1", "n2"),
+            ],
+            "logic": logic_tree(logic_group("OR", "n0", {"gene_name": ["BRCA1", "FTO"]})),
+        },
+        options={},
+        expected=(
+            f"""
+            MATCH (n0:gene)
+            WHERE {BRCA1_OR_FTO}
+            CALL (n0) {{
+              MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+              MATCH (n1)-[p1:translates_to]->(n2:protein)
+              RETURN collect(DISTINCT {{n1: n1, p0: p0, n2: n2, p1: p1}}) AS p0_p1
+            }}
+            WITH * WHERE size(p0_p1) > 0
+            RETURN n0, p0_p1
+            """,
+            f"""
+            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein)
+            WHERE {BRCA1_OR_FTO}
+            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
+                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
+            """,
+            f"""
+            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein)
+            WHERE {BRCA1_OR_FTO}
+            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript,
+                   COUNT(DISTINCT n2) AS n2_protein, COUNT(DISTINCT p0) AS p0_transcribed_to,
+                   COUNT(DISTINCT p1) AS p1_translates_to
+            """,
+        ),
+    ),
+    # --- List path -------------------------------------------------------------------
+    "logic-list-query": Case(
+        request={
+            "nodes": [node("n0", "gene", {"gene_name": "FTO,BRCA1"}), node("n1", "transcript")],
+            "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
+            "logic": logic_tree(logic_group("NOT", "n1", {"transcript_type": ["retained_intron"]})),
+        },
+        options={},
+        expected=tuple(
+            "WITH ['FTO', 'BRCA1'] AS listA "
+            "MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript) "
+            f"WHERE n0.gene_name IN listA AND {NOT_RETAINED_INTRON.format(var='n1')} {ret}"
+            for ret in (
+                "RETURN p0, n0, n1",
+                "RETURN COUNT(DISTINCT n0) + COUNT(DISTINCT n1) AS total_nodes, COUNT(DISTINCT p0) AS total_edges",
+                "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
+                "COUNT(DISTINCT p0) AS p0_transcribed_to",
+            )
+        ),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(LOGIC_CASES))
+def test_logic_queries_match_snapshot(generator, name):
+    case = LOGIC_CASES[name]
+
+    queries = generate(generator, case)
+
+    assert [one_line(q) for q in queries] == [one_line(q) for q in case.expected]
+
+
+def test_logic_of_one_request_does_not_leak_into_the_next(generator):
+    # One generator instance serves every request, so logic must travel with the
+    # request, never be remembered on the generator.
+    generate(generator, LOGIC_CASES["logic-not-next-to-own-filter"])
+
+    queries = generate(generator, CASES["node-only-with-limit"])
+
+    assert [one_line(q) for q in queries] == [one_line(q) for q in CASES["node-only-with-limit"].expected]
+
+
+def test_predicate_groups_are_rejected_until_supported(generator):
+    case = Case(
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript")],
+            "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
+            "logic": logic_tree({"operator": "NOT", "predicates": ["p0"]}),
+        },
+        options={},
+        expected=(),
+    )
+
+    with pytest.raises(ValueError, match="^not supported yet by the Cypher backend: predicate groups in 'logic'$"):
+        generate(generator, case)

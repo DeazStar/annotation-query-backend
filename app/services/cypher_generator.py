@@ -159,7 +159,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
 
         def has_filter(nid):
             node = node_map[nid]
-            return bool(node.get('id')) or bool(node.get('properties'))
+            return bool(node.get('id')) or bool(node.get('properties')) or bool(node.get('_logic_groups'))
 
         # First priority: filtered node that appears in most predicates
         # Sort by: (has_filter DESC, count DESC)
@@ -332,6 +332,8 @@ RETURN protein.id AS protein_id, component.id AS component_id
         return cypher_str, all_aliases, [anchor_var]
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
+        self._attach_logic_groups(requests)
+
         if self.is_in_list_request(requests):
             return self.in_list_query_generator(requests, limit)
 
@@ -373,7 +375,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
             for node in nodes:
                 var_name = f"{node['node_id']}"
                 match_no_preds.append(self.match_node(node, var_name))
-                if node['properties']:
+                if node['properties'] or node.get('_logic_groups'):
                     where_no_preds.extend(self.where_construct(node, var_name))
                 return_no_preds.append(var_name)
                 list_of_node_ids.append(var_name)
@@ -818,6 +820,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
                     continue
                 conditions.append(f"{var_name}.{key} =~ '(?i){value}'")
 
+            conditions.extend(self._logic_conditions(node, var_name))
             return conditions
 
         def get_match_node(node, var_name):
@@ -975,6 +978,79 @@ RETURN protein.id AS protein_id, component.id AS component_id
 
         return conditions
 
+    # --- Boolean 'logic' (AND / OR / NOT) on node properties -----------------
+    #
+    # The request's 'logic' section arrives validated (app/lib/validator.py) and
+    # canonicalized (app/lib/query_canonical.py). Each property group is turned
+    # into ONE condition string, e.g. "(n0.a =~ 'x' OR n0.b =~ 'y')". Every path
+    # already joins a node's conditions with AND, so these strings slot in
+    # without changing how any query is assembled.
+
+    def _attach_logic_groups(self, requests):
+        """Attach each top-level logic group to the node it is about.
+
+        The groups are stored on the request's own node dicts (this request's
+        canonical copy), never on self: one generator instance serves
+        concurrent requests, so per-request data must not live on it.
+        """
+        logic = requests.get('logic')
+        if not logic:
+            return
+
+        if logic['operator'] == 'AND':
+            groups = logic['children']
+        else:
+            # A non-AND root is one combined expression; validation guarantees
+            # it refers to a single node.
+            groups = [logic]
+
+        nodes_by_id = {node['node_id']: node for node in requests['nodes']}
+        groups_by_node = {}
+        for group in groups:
+            if 'predicates' in group:
+                raise ValueError("not supported yet by the Cypher backend: predicate groups in 'logic'")
+            groups_by_node.setdefault(self._logic_group_node_id(group), []).append(group)
+
+        for node_id, node_groups in groups_by_node.items():
+            nodes_by_id[node_id]['_logic_groups'] = node_groups
+
+    def _logic_group_node_id(self, group):
+        """Return the node a property group (or a nest of them) is about."""
+        if 'nodes' in group:
+            return group['nodes']['node_id']
+        return self._logic_group_node_id(group['children'][0])
+
+    def _logic_conditions(self, node, var_name):
+        """Return one WHERE condition per logic group attached to this node."""
+        return [self._render_logic_group(group, var_name) for group in node.get('_logic_groups', [])]
+
+    def _render_logic_group(self, group, var_name):
+        """Render a property group, or a nest of them, as one Cypher condition.
+
+        AND / OR join the parts. NOT means "none of them": a missing property
+        counts as not matching, so coalesce turns its null result into false
+        before NOT is applied.
+        """
+        if 'nodes' in group:
+            parts = [
+                f"{var_name}.{key} =~ '(?i){self._escape_regex(value)}'"
+                for key, values in sorted(group['nodes']['properties'].items())
+                for value in values
+            ]
+        else:
+            parts = [self._render_logic_group(child, var_name) for child in group['children']]
+
+        if group['operator'] == 'NOT':
+            return f"NOT coalesce({self._join_conditions(parts, 'OR')}, false)"
+        return self._join_conditions(parts, group['operator'])
+
+    @staticmethod
+    def _join_conditions(parts, operator):
+        """Join conditions with AND or OR, in parentheses when there is more than one."""
+        if len(parts) == 1:
+            return parts[0]
+        return "(" + f" {operator} ".join(parts) + ")"
+
     def where_construct(self, node, var_name):
         """
         Construct WHERE clauses for a node, supporting genomic interval filters.
@@ -985,7 +1061,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
         properties = []
     
         if node['id']:
-            return properties
+            return self._logic_conditions(node, var_name)
     
         start = node['properties'].get('start')
         end = node['properties'].get('end')
@@ -1025,6 +1101,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
                 # Fallback: within
                 properties.append(f"{start_int} >= {start} AND {end_int} <= {end}")
     
+        properties.extend(self._logic_conditions(node, var_name))
         return properties
 
     def parse_and_serialize(self, input, schema, graph_components, result_type):

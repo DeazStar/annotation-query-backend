@@ -8,6 +8,7 @@ from collections import Counter
 import re
 from app.lib.db_resilience import ResilientDriver, RetryPolicy, QueryType, QueryTimeoutConfig
 from app.lib.result_formatter import Result_Formatter
+from app.lib.validator import LogicValidationError, negated_predicate_ends
 from collections import deque
 
 load_dotenv()
@@ -333,6 +334,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         self._attach_logic_groups(requests)
+        requests = self._remove_negated_predicates(requests)
 
         if self.is_in_list_request(requests):
             return self.in_list_query_generator(requests, limit)
@@ -375,7 +377,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
             for node in nodes:
                 var_name = f"{node['node_id']}"
                 match_no_preds.append(self.match_node(node, var_name))
-                if node['properties'] or node.get('_logic_groups'):
+                if node['properties'] or node.get('_logic_groups') or node.get('_negated_predicates'):
                     where_no_preds.extend(self.where_construct(node, var_name))
                 return_no_preds.append(var_name)
                 list_of_node_ids.append(var_name)
@@ -646,16 +648,17 @@ RETURN protein.id AS protein_id, component.id AS component_id
         Returns True if any node in the request has a 'ids' list property,
         indicating this is a mixed or pure list query.
         """
-        for node in requests['nodes']:
-            if isinstance(node.get('ids'), list) and len(node['ids']) > 0:
-                return True
-            id_val = node.get('id', '')
-            if isinstance(id_val, str) and ',' in id_val:
-                return True
-            for val in node.get('properties', {}).values():
-                if isinstance(val, str) and ',' in val:
-                    return True
-        return False
+        return any(self._node_has_list_values(node) for node in requests['nodes'])
+
+    @staticmethod
+    def _node_has_list_values(node):
+        """Return True if the node has an 'ids' list or a comma-separated id or property."""
+        if isinstance(node.get('ids'), list) and len(node['ids']) > 0:
+            return True
+        id_val = node.get('id', '')
+        if isinstance(id_val, str) and ',' in id_val:
+            return True
+        return any(isinstance(val, str) and ',' in val for val in node.get('properties', {}).values())
     
     def _topological_sort_predicates(self, predicates, list_vars):
         """
@@ -1008,7 +1011,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
         groups_by_node = {}
         for group in groups:
             if 'predicates' in group:
-                raise ValueError("not supported yet by the Cypher backend: predicate groups in 'logic'")
+                continue  # handled by _remove_negated_predicates
             groups_by_node.setdefault(self._logic_group_node_id(group), []).append(group)
 
         for node_id, node_groups in groups_by_node.items():
@@ -1021,8 +1024,82 @@ RETURN protein.id AS protein_id, component.id AS component_id
         return self._logic_group_node_id(group['children'][0])
 
     def _logic_conditions(self, node, var_name):
-        """Return one WHERE condition per logic group attached to this node."""
-        return [self._render_logic_group(group, var_name) for group in node.get('_logic_groups', [])]
+        """Return the WHERE conditions 'logic' adds to this node.
+
+        One condition per property group, then one NOT EXISTS per negated
+        predicate that keeps this node.
+        """
+        conditions = [self._render_logic_group(group, var_name) for group in node.get('_logic_groups', [])]
+        conditions.extend(
+            self._render_negated_predicate(predicate, far_node, var_name, kept_is_source)
+            for predicate, far_node, kept_is_source in node.get('_negated_predicates', [])
+        )
+        return conditions
+
+    def _remove_negated_predicates(self, requests):
+        """Take predicates under NOT out of normal matching.
+
+        Returns a copy of the request without the negated predicates and
+        their far nodes (see negated_predicate_ends). Each negated predicate
+        is attached to its kept node instead, and becomes a NOT EXISTS
+        condition there, so the far node is never returned or counted.
+        """
+        logic = requests.get('logic')
+        if not logic or logic['operator'] != 'AND':
+            return requests  # validation allows predicate groups only under an AND root
+
+        negated_ids = set()
+        for group in logic['children']:
+            if 'predicates' not in group:
+                continue
+            if group['operator'] == 'OR':
+                raise LogicValidationError("not supported yet by the Cypher backend: OR between predicates")
+            if group['operator'] == 'NOT':
+                negated_ids.update(group['predicates'])
+            # AND: the predicates must exist, which every predicate already requires.
+        if not negated_ids:
+            return requests
+
+        predicates = requests['predicates']
+        nodes_by_id = {node['node_id']: node for node in requests['nodes']}
+        far_ids = set()
+        for predicate in predicates:
+            if predicate['predicate_id'] not in negated_ids:
+                continue
+            kept_id, far_id = negated_predicate_ends(predicate, predicates)
+            far_node = nodes_by_id[far_id]
+            if self._node_has_list_values(far_node):
+                raise LogicValidationError(
+                    f"not supported yet by the Cypher backend: list values on node '{far_id}', which is only "
+                    "used by a negated predicate; use an OR group in 'logic' for its values instead"
+                )
+            kept_is_source = kept_id == predicate['source']
+            nodes_by_id[kept_id].setdefault('_negated_predicates', []).append((predicate, far_node, kept_is_source))
+            far_ids.add(far_id)
+
+        return {
+            **requests,
+            'nodes': [node for node in requests['nodes'] if node['node_id'] not in far_ids],
+            'predicates': [p for p in predicates if p['predicate_id'] not in negated_ids],
+        }
+
+    def _render_negated_predicate(self, predicate, far_node, var_name, kept_is_source):
+        """Render "no such edge from this node" as NOT EXISTS { MATCH ... }.
+
+        The far node keeps its own filters, inside the braces: "no pathway
+        named X" excludes only genes linked to a pathway named X.
+        """
+        far_var = far_node['node_id']
+        far_pattern = self.match_node(far_node, far_var)
+        relationship = f"-[:{predicate['type'].replace(' ', '_').lower()}]->"
+        if kept_is_source:
+            pattern = f"({var_name}){relationship}{far_pattern}"
+        else:
+            pattern = f"{far_pattern}{relationship}({var_name})"
+
+        far_conditions = self.where_construct(far_node, far_var)
+        where = f" WHERE {' AND '.join(far_conditions)}" if far_conditions else ""
+        return f"NOT EXISTS {{ MATCH {pattern}{where} }}"
 
     def _render_logic_group(self, group, var_name):
         """Render a property group, or a nest of them, as one Cypher condition.

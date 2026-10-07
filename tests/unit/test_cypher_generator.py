@@ -11,6 +11,7 @@ Whitespace is ignored when comparing; every other character must match.
 """
 import copy
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ from typing import NamedTuple
 
 import pytest
 
+from app.lib.validator import LogicValidationError
 from app.services.cypher_generator import CypherQueryGenerator
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -45,6 +47,14 @@ PROTEIN_CODING_TRANSCRIPT = {"transcript_type": "protein_coding"}
 
 GENE_TRANSCRIPT_PATHWAY = {
     "nodes": [node("n0", "gene", FTO_PROTEIN_CODING), node("n1", "transcript"), node("n2", "pathway")],
+    "predicates": [
+        predicate("p0", "transcribed to", "n0", "n1"),
+        predicate("p1", "genes pathways", "n0", "n2"),
+    ],
+}
+
+GENE_TRANSCRIPT_PATHWAY_BY_NAME = {
+    "nodes": [node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "pathway")],
     "predicates": [
         predicate("p0", "transcribed to", "n0", "n1"),
         predicate("p1", "genes pathways", "n0", "n2"),
@@ -611,16 +621,235 @@ def test_logic_of_one_request_does_not_leak_into_the_next(generator):
     assert [one_line(q) for q in queries] == [one_line(q) for q in CASES["node-only-with-limit"].expected]
 
 
-def test_predicate_groups_are_rejected_until_supported(generator):
+def test_or_between_predicates_is_rejected_until_supported(generator):
     case = Case(
+        request={**GENE_TRANSCRIPT_PATHWAY, "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]})},
+        options={},
+        expected=(),
+    )
+
+    with pytest.raises(LogicValidationError, match="^not supported yet by the Cypher backend: OR between predicates$"):
+        generate(generator, case)
+
+
+# --- Requests with NOT on a predicate (edge) -----------------------------------
+#
+# A negated predicate and its far node leave normal matching; the kept node gets
+# NOT EXISTS { MATCH ... } instead, with the far node's own filters inside.
+
+def negated(*predicate_ids):
+    """Return a predicate group that negates the given predicates."""
+    return {"operator": "NOT", "predicates": list(predicate_ids)}
+
+
+NO_PATHWAY = "NOT EXISTS {{ MATCH (n0)-[:genes_pathways]->({far}:pathway) }}"
+
+NOT_EDGE_CASES = {
+    "not-edge-whole-pattern": Case(
+        # "Genes with no pathway": nothing else is left to match, so it is a node-only query.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "pathway")],
+            "predicates": [predicate("p0", "genes pathways", "n0", "n1")],
+            "logic": logic_tree(negated("p0")),
+        },
+        options={},
+        expected=gene_only(NO_PATHWAY.format(far="n1")),
+    ),
+    "not-edge-simple-chain": Case(
+        request={**GENE_TRANSCRIPT_PATHWAY_BY_NAME, "logic": logic_tree(negated("p1"))},
+        options={},
+        expected=gene_to_transcript("(n0:gene)", f"n0.gene_name =~ '(?i)FTO' AND {NO_PATHWAY.format(far='n2')}"),
+    ),
+    "not-edge-far-node-filters": Case(
+        # The far node's own properties and logic go inside the braces.
+        request={
+            "nodes": [
+                node("n0", "gene", FTO), node("n1", "transcript"),
+                node("n2", "pathway", {"pathway_name": "Insulin signaling"}),
+            ],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+            ],
+            "logic": logic_tree(negated("p1"), logic_group("NOT", "n2", {"source": ["KEGG"]})),
+        },
+        options={},
+        expected=gene_to_transcript(
+            "(n0:gene)",
+            "n0.gene_name =~ '(?i)FTO' AND NOT EXISTS { MATCH (n0)-[:genes_pathways]->(n2:pathway) "
+            "WHERE n2.pathway_name =~ '(?i)Insulin signaling' AND NOT coalesce(n2.source =~ '(?i)KEGG', false) }",
+        ),
+    ),
+    "not-edge-kept-node-is-target": Case(
+        # gene -> transcript -> protein, NOT on the first edge: the transcript is kept,
+        # so the far gene is written on the left of the arrow.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "transcript"), node("n2", "protein")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "translates to", "n1", "n2"),
+            ],
+            "logic": logic_tree(negated("p0")),
+        },
+        options={},
+        expected=tuple(
+            "MATCH (n1:transcript)-[p1:translates_to]->(n2:protein) "
+            f"WHERE NOT EXISTS {{ MATCH (n0:gene)-[:transcribed_to]->(n1) }} {ret}"
+            for ret in (
+                "RETURN p1, n1, n2",
+                "RETURN (COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes, (COUNT(DISTINCT p1)) AS total_edges",
+                "RETURN COUNT(DISTINCT n1) AS n1_transcript, COUNT(DISTINCT n2) AS n2_protein, "
+                "COUNT(DISTINCT p1) AS p1_translates_to",
+            )
+        ),
+    ),
+    "not-edge-inside-anchor-arm": Case(
+        # The condition belongs to the transcript, so it goes inside the transcript arm.
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "pathway"), node("n2", "transcript"), node("n3", "protein")],
+            "predicates": [
+                predicate("p0", "genes pathways", "n0", "n1"),
+                predicate("p1", "transcribed to", "n0", "n2"),
+                predicate("p2", "translates to", "n2", "n3"),
+            ],
+            "logic": logic_tree(negated("p2")),
+        },
+        options={},
+        expected=(
+            """
+            MATCH (n0:gene)
+            WHERE n0.gene_name =~ '(?i)FTO'
+            CALL (n0) {
+              MATCH (n0)-[p0:genes_pathways]->(n1:pathway)
+              RETURN collect(DISTINCT {n1: n1, p0: p0}) AS p0
+            }
+            CALL (n0) {
+              MATCH (n0)-[p1:transcribed_to]->(n2:transcript)
+              WHERE NOT EXISTS { MATCH (n2)-[:translates_to]->(n3:protein) }
+              RETURN collect(DISTINCT {n2: n2, p1: p1}) AS p1
+            }
+            WITH * WHERE size(p0) > 0 AND size(p1) > 0
+            RETURN n0, p0, p1
+            """,
+            """
+            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
+            WHERE n0.gene_name =~ '(?i)FTO' AND NOT EXISTS { MATCH (n2)-[:translates_to]->(n3:protein) }
+            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
+                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
+            """,
+            """
+            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
+            WHERE n0.gene_name =~ '(?i)FTO' AND NOT EXISTS { MATCH (n2)-[:translates_to]->(n3:protein) }
+            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_pathway,
+                   COUNT(DISTINCT n2) AS n2_transcript, COUNT(DISTINCT p0) AS p0_genes_pathways,
+                   COUNT(DISTINCT p1) AS p1_transcribed_to
+            """,
+        ),
+    ),
+    "not-two-edges-with-property-group": Case(
+        # NOT [a, b] means "none of them": one NOT EXISTS per edge, joined with AND.
+        request={
+            "nodes": [node("n0", "gene"), node("n1", "pathway"), node("n2", "transcript")],
+            "predicates": [
+                predicate("p0", "genes pathways", "n0", "n1"),
+                predicate("p1", "transcribed to", "n0", "n2"),
+            ],
+            "logic": logic_tree(negated("p0", "p1"), logic_group("OR", "n0", {"gene_name": ["BRCA1", "FTO"]})),
+        },
+        options={},
+        expected=gene_only(
+            f"{BRCA1_OR_FTO} AND {NO_PATHWAY.format(far='n1')} "
+            "AND NOT EXISTS { MATCH (n0)-[:transcribed_to]->(n2:transcript) }"
+        ),
+    ),
+    "not-edge-list-query": Case(
+        request={
+            "nodes": [node("n0", "gene", {"gene_name": "FTO,BRCA1"}), node("n1", "transcript"), node("n2", "pathway")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+            ],
+            "logic": logic_tree(negated("p1")),
+        },
+        options={},
+        expected=tuple(
+            "WITH ['FTO', 'BRCA1'] AS listA "
+            "MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript) "
+            f"WHERE n0.gene_name IN listA AND {NO_PATHWAY.format(far='n2')} {ret}"
+            for ret in (
+                "RETURN p0, n0, n1",
+                "RETURN COUNT(DISTINCT n0) + COUNT(DISTINCT n1) AS total_nodes, COUNT(DISTINCT p0) AS total_edges",
+                "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
+                "COUNT(DISTINCT p0) AS p0_transcribed_to",
+            )
+        ),
+    ),
+    "not-edge-kept-node-pinned-by-id": Case(
+        request={
+            "nodes": [node("n0", "gene", node_ref="ENSG00000140718"), node("n1", "pathway")],
+            "predicates": [predicate("p0", "genes pathways", "n0", "n1")],
+            "logic": logic_tree(negated("p0")),
+        },
+        options={},
+        expected=tuple(
+            f"MATCH (n0:gene {{id: 'ENSG00000140718'}}) WHERE {NO_PATHWAY.format(far='n1')} {ret}"
+            for ret in (
+                "RETURN n0",
+                "RETURN (COUNT(DISTINCT n0)) AS total_nodes, (0) AS total_edges",
+                "RETURN COUNT(DISTINCT n0) AS n0_gene",
+            )
+        ),
+    ),
+    "and-predicate-group-changes-nothing": Case(
+        # AND on a predicate means "it must exist", which every predicate already means.
         request={
             "nodes": [node("n0", "gene", FTO), node("n1", "transcript")],
             "predicates": [predicate("p0", "transcribed to", "n0", "n1")],
-            "logic": logic_tree({"operator": "NOT", "predicates": ["p0"]}),
+            "logic": logic_tree({"operator": "AND", "predicates": ["p0"]}),
+        },
+        options={},
+        expected=gene_to_transcript("(n0:gene)", "n0.gene_name =~ '(?i)FTO'"),
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_EDGE_CASES))
+def test_not_edge_queries_match_snapshot(generator, name):
+    case = NOT_EDGE_CASES[name]
+
+    queries = generate(generator, case)
+
+    assert [one_line(q) for q in queries] == [one_line(q) for q in case.expected]
+
+
+def test_list_values_on_a_far_node_are_rejected(generator):
+    # Matched literally, "A,B" would find no pathway and keep every gene.
+    case = Case(
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "pathway", {"pathway_name": "A,B"})],
+            "predicates": [predicate("p0", "genes pathways", "n0", "n1")],
+            "logic": logic_tree(negated("p0")),
         },
         options={},
         expected=(),
     )
 
-    with pytest.raises(ValueError, match="^not supported yet by the Cypher backend: predicate groups in 'logic'$"):
+    with pytest.raises(
+        LogicValidationError,
+        match=re.escape(
+            "not supported yet by the Cypher backend: list values on node 'n1', which is only used "
+            "by a negated predicate; use an OR group in 'logic' for its values instead"
+        ),
+    ):
         generate(generator, case)
+
+
+def test_negated_predicates_leave_the_callers_lists_intact(generator):
+    # The generator works on a copy of the lists, so the request it was given
+    # still lists every node and predicate afterwards.
+    request = copy.deepcopy({**GENE_TRANSCRIPT_PATHWAY_BY_NAME, "logic": logic_tree(negated("p1"))})
+
+    generator.query_Generator(request, {n["node_id"]: n for n in request["nodes"]})
+
+    assert [n["node_id"] for n in request["nodes"]] == ["n0", "n1", "n2"]
+    assert [p["predicate_id"] for p in request["predicates"]] == ["p0", "p1"]

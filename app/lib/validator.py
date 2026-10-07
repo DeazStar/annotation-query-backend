@@ -193,6 +193,8 @@ def validate_logic(logic, node_map, predicate_map):
         # Only children of an AND root may mix nodes and predicates (v1 scope).
         _validate_group(child, node_map, predicate_map, depth=1, at_and_root=is_and_root)
 
+    _require_predicates_in_one_group(logic['children'])
+
     if not is_and_root:
         _require_single_node(logic)
 
@@ -269,6 +271,11 @@ def _validate_predicate_group(group, predicate_map):
         if not isinstance(predicate_id, str) or predicate_id not in predicate_map:
             raise LogicValidationError(f"logic refers to unknown predicate '{predicate_id}'")
 
+    if group['operator'] == 'NOT':
+        all_predicates = list(predicate_map.values())
+        for predicate_id in predicate_ids:
+            negated_predicate_ends(predicate_map[predicate_id], all_predicates)
+
     if group['operator'] == 'OR' and len(predicate_ids) > 1:
         endpoints = [
             {predicate_map[pid]['source'], predicate_map[pid]['target']} for pid in predicate_ids
@@ -277,6 +284,57 @@ def _validate_predicate_group(group, predicate_map):
             raise LogicValidationError(
                 f"not supported yet: OR between predicates {predicate_ids} that share no node"
             )
+
+
+def negated_predicate_ends(predicate, predicates):
+    """Return (kept_node_id, far_node_id) for a predicate under NOT.
+
+    "NOT p" means: return the kept node only when no edge like p connects it
+    to a node like the far node. The far node is never returned; it only
+    describes the edge that must not exist. Every backend uses this function,
+    so they all agree on which end is which:
+      - the far node is the end that no other predicate uses;
+      - if neither end is used elsewhere (p is the whole pattern, e.g.
+        "genes with no pathway"), the edge's source is kept;
+      - if both ends are used elsewhere, it is not supported yet.
+
+    Args:
+        predicate: The negated predicate.
+        predicates: All predicates of the request, including this one.
+
+    Raises:
+        LogicValidationError: If no end can be the far node.
+    """
+    predicate_id = predicate['predicate_id']
+    source, target = predicate['source'], predicate['target']
+    if source == target:
+        raise LogicValidationError(
+            f"not supported yet: NOT on predicate '{predicate_id}', which starts and ends at the same node"
+        )
+
+    used_elsewhere = {
+        node_id
+        for other in predicates
+        if other['predicate_id'] != predicate_id
+        for node_id in (other['source'], other['target'])
+    }
+    if source in used_elsewhere and target in used_elsewhere:
+        raise LogicValidationError(
+            f"not supported yet: NOT on predicate '{predicate_id}', whose two nodes are both used by other predicates"
+        )
+    if target in used_elsewhere:
+        return target, source
+    return source, target
+
+
+def _require_predicates_in_one_group(groups):
+    """Raise if a predicate id appears in more than one predicate group."""
+    seen = set()
+    for group in groups:
+        for predicate_id in group.get('predicates', []):
+            if predicate_id in seen:
+                raise LogicValidationError(f"predicate '{predicate_id}' is used in more than one predicate group")
+            seen.add(predicate_id)
 
 
 def _normalize_operator(operator):

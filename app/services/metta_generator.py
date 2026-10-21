@@ -49,6 +49,74 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
         return node_representation
 
+    class _FakeGroundedValue:
+        """Mimics hyperon's grounded-atom .get_object().value interface so
+        process_result_count can read a Python-computed count dict directly."""
+        def __init__(self, value):
+            self._value = value
+        def get_object(self):
+            return self
+        @property
+        def value(self):
+            return self._value
+
+    def _boolean_spec_metta(self, node):
+        """
+        Build one OR/NOT spec for a single property-filtered node. The spec
+        always runs one match per property (METTA has no OR/NOT operator),
+        computes the real matching-entity set once, and that same set backs
+        the query result and both counts — total_count/label_count are never
+        run as separate METTA queries, since each is a pre-aggregated grounded
+        value, not something that can be unioned or subtracted per-entity.
+        """
+        node_type = node["type"]
+        ident = "$" + node["node_id"]
+
+        clauses = [
+            self.construct_node_representation({"type": node_type, "properties": {k: v}}, ident).strip()
+            for k, v in node["properties"].items()
+        ]
+        base = {"logic": node["logic"], "node_type": node_type, "ident": ident}
+        if node["logic"] == "OR":
+            base["clauses"] = clauses
+        else:
+            base["bare"] = f"({node_type} {ident})"
+            base["full"] = self.construct_node_representation(node, ident).strip()
+
+        return {kind: dict(base, kind=kind) for kind in ("query", "total_count", "label_count")}
+
+    def _run_boolean_query_metta(self, spec):
+        node_type = spec["node_type"]
+        return_expr = f"({node_type} {spec['ident']})"
+
+        def run_inner(inner):
+            q = f"!(match &space (, {inner}) ({return_expr}))"
+            result = self.metta.run(q)
+            return result[0] if result and result[0] else []
+
+        if spec["logic"] == "OR":
+            merged, seen = [], set()
+            for clause in spec["clauses"]:
+                for atom in run_inner(clause):
+                    key = str(atom)
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append(atom)
+        else:
+            excluded = {str(atom) for atom in run_inner(spec["full"])}
+            merged = [atom for atom in run_inner(spec["bare"]) if str(atom) not in excluded]
+
+        kind = spec["kind"]
+        if kind == "query":
+            return [merged]
+        count = len(merged)
+        if kind == "total_count":
+            return [[self._FakeGroundedValue({"total_nodes": count, "total_edges": 0})]]
+        return [[self._FakeGroundedValue({
+            "node_label_count": {node_type: {"count": count}},
+            "edge_label_count": {},
+        })]]
+
     def query_Generator(self, requests ,node_map, limit=None, node_only=False):
         nodes = requests['nodes']
         predicate_map = {}
@@ -80,6 +148,13 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
  
         # if there is no predicate
         if not predicates:
+            if len(nodes) == 1 and nodes[0].get("logic", "AND") != "AND" and not nodes[0].get("id") and nodes[0].get("properties"):
+                if node_only:
+                    raise ValueError("logic OR/NOT is not supported with node_only on MeTTa yet")
+                spec = self._boolean_spec_metta(nodes[0])
+                return [spec["query"], spec["total_count"], spec["label_count"]]
+            if any(n.get("logic", "AND") != "AND" for n in nodes):
+                raise ValueError("logic OR/NOT is only supported for single-node queries with properties on MeTTa")
             for node in nodes:
                 node_type = node["type"]
                 node_id = node["node_id"]
@@ -115,6 +190,9 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
             metta_output += f'{match_clause}){return_clause}))'
             return [metta_output, count_query[0], count_query[1]]
 
+        for node in nodes:
+            if node.get("logic", "AND") != "AND":
+                raise ValueError("logic OR/NOT is not supported together with predicates on MeTTa yet")
         for predicate in predicates:
             predicate_type = predicate['type'].replace(" ", "_")
             source_id = predicate['source']
@@ -184,7 +262,9 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         return [total_count_query, lable_count_query]
 
         
-    def run_query(self, query_code, stop_event=True):
+    def run_query(self, query_code, stop_event=True, species="human"):
+        if isinstance(query_code, dict):
+            return self._run_boolean_query_metta(query_code)
         result = self.metta.run(query_code)
         return result
 
@@ -240,40 +320,52 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 "edge_count_by_label": meta_data.get('edge_count_by_label', [])
         }
 
-    def get_node_properties(self, results, schema):
-        metta = ('''!(match &space (,''')
-        output = (''' (,''') 
-        nodes = set()
+    def get_node_properties(self, results, schema, species="human"):
+        """
+        Runs one match query per (entity, property) pair instead of one giant
+        conjunction, then merges every returned atom into a single flat list.
+        METTA's match requires every conjunct to have a matching fact, so
+        bundling an entity's full property set into one match fails whenever
+        any single declared property has no stored value for that entity.
+        """
+        merged = []
+        nodes_seen = set()
+
+        def run_single(pattern, template):
+            q = f"!(match &space (, {pattern}) ({template}))"
+            res = self.run_query(q, species=species)
+            atoms = res[0] if res and res[0] else []
+            merged.extend(atoms)
+
         for result in results:
             source = result['source']
             source_node_type = result['source'].split(' ')[0]
 
-            if source not in nodes:
-                for property, _ in schema[source_node_type]['properties'].items():
-                    id = self.generate_id()
-                    metta += " " + f'({property} ({source}) ${id})'
-                    output += " " + f'(node {property} ({source}) ${id})'
-                nodes.add(source)
+            if source not in nodes_seen:
+                for property, _ in schema[species]['nodes'][source_node_type]['properties'].items():
+                    var = self.generate_id()
+                    run_single(f"({property} ({source}) ${var})", f"(node {property} ({source}) ${var})")
+                nodes_seen.add(source)
 
             if "target" in result and "predicate" in result:
                 target = result['target']
                 target_node_type = result['target'].split(' ')[0]
-                if target not in nodes:
-                    for property, _ in schema[target_node_type]['properties'].items():
-                        id = self.generate_id()
-                        metta += " " + f'({property} ({target}) ${id})'
-                        output += " " + f'(node {property} ({target}) ${id})'
-                    nodes.add(target)
+                if target not in nodes_seen:
+                    for property, _ in schema[species]['nodes'][target_node_type]['properties'].items():
+                        var = self.generate_id()
+                        run_single(f"({property} ({target}) ${var})", f"(node {property} ({target}) ${var})")
+                    nodes_seen.add(target)
 
                 predicate = result['predicate']
-                predicate_schema = f'{source_node_type}_{predicate}_{target_node_type}'
-                for property, _ in schema[predicate_schema]['properties'].items():
-                    random = self.generate_id()
-                    metta += " " + f'({property} ({predicate} ({source}) ({target})) ${random})'
-                    output +=  " " + f'(edge {property} ({predicate} ({source}) ({target})) ${random})' 
+                edge_props = schema[species]['edges'].get(predicate, {}).get('properties', {})
+                for property, _ in edge_props.items():
+                    var = self.generate_id()
+                    run_single(
+                        f"({property} ({predicate} ({source}) ({target})) ${var})",
+                        f"(edge {property} ({predicate} ({source}) ({target})) ${var})",
+                    )
 
-        metta+= f" ) {output}))"
-        return metta
+        return merged
 
     def convert_to_dict(self, results, schema=None):
         result = self.prepare_query_input(results, schema)
@@ -411,7 +503,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         
         return meta_data
 
-    def prepare_query_input(self, inputs, schema):
+    def prepare_query_input(self, inputs, schema, species="human"):
         result = []
         for input in inputs:
             if len(input) == 0:
@@ -430,9 +522,8 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                     "source": f"{src_type} {src_id}",
                     "target": f"{tgt_type} {tgt_id}"
                     })
-        query = self.get_node_properties(result, schema)
-        result = self.run_query(query)
-        return result
+        merged_atoms = self.get_node_properties(result, schema, species=species)
+        return [merged_atoms]
 
     def parse_id(self, request):
         nodes = request["nodes"]

@@ -128,27 +128,26 @@ class MorkQueryGenerator:
         else:
             raise ValueError("query must be a tuple or a list of tuples")
 
-    def find_localized_proteins(self, protein_ids, location_ids, species="human"):
-        """Returns (protein_id, location_id) pairs for proteins located_in or
-        part_of the given cellular_component location ids."""
-        LOCALIZATION_PREDICATES = ("located_in", "part_of")
-        pairs_found = []
-        for protein_id in protein_ids:
-            for location_id in location_ids:
-                for predicate in LOCALIZATION_PREDICATES:
-                    found_id = self.generate_id()
-                    pattern = (
-                        f"({predicate} (protein {protein_id}) (cellular_component {location_id}))",
-                    )
-                    template = (
-                        f"({found_id} ({predicate} (protein {protein_id}) (cellular_component {location_id})))",
-                    )
-                    query = (pattern, template, "query", found_id)
-                    result = self.run_query(query, species=species)
-                    if result and result[0]:
-                        pairs_found.append((protein_id, location_id))
-                        break
-        return pairs_found
+    def _boolean_spec(self, nodes):
+        """Describe OR/NOT filtering for a single property-filtered node, else None."""
+        flagged = [
+            n for n in nodes
+            if n.get("logic", "AND") != "AND" and not n.get("id") and n.get("properties")
+        ]
+        if not flagged:
+            return None
+        if len(nodes) != 1:
+            raise ValueError("logic OR/NOT is only supported for single-node queries on MORK")
+        node = nodes[0]
+        ident = "$" + node["node_id"]
+        ntype = node["type"]
+        clauses = [
+            f"({key} ({ntype} {ident}) {self._serialize_metta_value(value)})"
+            for key, value in node["properties"].items()
+        ]
+        if node["logic"] == "OR":
+            return {"logic": "OR", "patterns": clauses}
+        return {"logic": "NOT", "include": f"({ntype} {ident})", "exclude": " ".join(clauses)}
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
@@ -213,7 +212,14 @@ class MorkQueryGenerator:
                 self.current_id,
             )
 
+            boolean_spec = self._boolean_spec(nodes)
+            if boolean_spec:
+                return [q + (boolean_spec,) for q in (query, total_count_query, label_count_query)]
             return [query, total_count_query, label_count_query]
+
+        for node in nodes:
+            if node.get("logic", "AND") != "AND":
+                raise ValueError("logic OR/NOT is not supported together with predicates on MORK yet")
         for predicate in predicates:
             predicate_type = predicate["type"].replace(" ", "_")
             source_id = predicate["source"]

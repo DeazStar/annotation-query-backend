@@ -53,12 +53,15 @@ def call_process_query(monkeypatch):
         query_endpoint.AnnotationStorageService, "get_by_fingerprint", staticmethod(lambda fingerprint: None)
     )
 
-    def call(error):
+    def call(error, logic=None):
         generator = FakeGenerator(error)
         monkeypatch.setattr(query_endpoint, "get_db_instance", lambda species: generator)
+        requests = {**REQUEST, "nodes": [dict(n) for n in REQUEST["nodes"]],
+                    "predicates": [dict(p) for p in REQUEST["predicates"]]}
+        if logic is not None:
+            requests["logic"] = logic
         return query_endpoint.process_query(
-            data={"requests": {**REQUEST, "nodes": [dict(n) for n in REQUEST["nodes"]],
-                               "predicates": [dict(p) for p in REQUEST["predicates"]]}},
+            data={"requests": requests},
             limit=None,
             properties=None,
             source=None,
@@ -86,3 +89,17 @@ def test_other_backend_errors_still_become_500(call_process_query):
         call_process_query(RuntimeError("database down"))
 
     assert raised.value.status_code == 500
+
+
+def test_misspelled_logic_key_becomes_400_naming_the_key(call_process_query):
+    # The typo from the review: before, it was ignored and the opposite results came back.
+    logic = {
+        "operater": "NOT",
+        "children": [{"operator": "AND", "nodes": {"node_id": "n0", "properties": {"gene_type": "lncRNA"}}}],
+    }
+
+    with pytest.raises(HTTPException) as raised:
+        call_process_query(AssertionError("validation must stop the request first"), logic=logic)
+
+    assert raised.value.status_code == 400
+    assert "unknown key 'operater' in 'logic'" in raised.value.detail

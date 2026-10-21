@@ -195,11 +195,33 @@ RETURN protein.id AS protein_id, component.id AS component_id
         filters. Every predicate goes into an independent CALL arm.
         This ensures 1 row per anchor node regardless of connection count,
         and avoids Cartesian product row explosion entirely.
-        
+
         Returns:
             cypher_str   - the full query string
             aliases      - list of collect-alias names per arm
             outer_nodes  - [anchor_var]
+        """
+        head_parts, _, all_aliases = self._call_subquery_head(
+            predicates, node_map, anchor_var, strict=strict, or_groups=or_groups
+        )
+
+        # Build outer RETURN — anchor + all arm aliases
+        outer_return = f"RETURN {anchor_var}, {', '.join(all_aliases)}"
+        limit_clause = f"LIMIT {limit}" if limit else ""
+
+        parts = head_parts + [outer_return, limit_clause]
+        parts = [p for p in parts if p.strip()]
+        cypher_str = '\n'.join(parts)
+
+        return cypher_str, all_aliases, [anchor_var]
+
+    def _call_subquery_head(self, predicates, node_map, anchor_var, strict=True, or_groups=None):
+        """Return (head_parts, arms, aliases): the anchor MATCH, its CALL arms and the arm checks.
+
+        The result query and the two count queries all start with this head,
+        so they select exactly the same anchors and arm rows. Each arm is
+        collected into one list per anchor, so the head yields one row per
+        anchor, however many edges each arm finds.
         """
         anchor_node = node_map[anchor_var]
         anchor_where = self.where_construct(anchor_node, anchor_var)
@@ -220,7 +242,12 @@ RETURN protein.id AS protein_id, component.id AS component_id
         arms = []
         assigned = set()
 
-        for pred in remaining_predicates:
+        # Arms start from predicates touching the anchor (stable sort: request
+        # order otherwise), so every MATCH in an arm starts from a node that is
+        # already bound, never from a scan of all edges of one type.
+        starts = sorted(remaining_predicates, key=lambda p: anchor_var not in (p['source'], p['target']))
+
+        for pred in starts:
             if pred['predicate_id'] in assigned:
                 continue
             src = pred['source']
@@ -317,21 +344,62 @@ RETURN protein.id AS protein_id, component.id AS component_id
             call_blocks.append(call_block)
             all_aliases.append(arm_alias)
 
-        # Build outer RETURN — anchor + all arm aliases
-        outer_return = f"RETURN {anchor_var}, {', '.join(all_aliases)}"
-        limit_clause = f"LIMIT {limit}" if limit else ""
-
         # strict=True (default): all arms must return data, otherwise the whole
         # result is empty. strict=False: return partial results even if some arms
         # have no data.
         size_checks = self._arm_size_checks(arms, all_aliases, or_groups or [])
         strict_where = f"WITH * WHERE {size_checks}" if strict else ""
 
-        parts = [outer_match, outer_where] + call_blocks + [strict_where, outer_return, limit_clause]
-        parts = [p for p in parts if p.strip()]
-        cypher_str = '\n'.join(parts)
+        head_parts = [p for p in [outer_match, outer_where] + call_blocks + [strict_where] if p.strip()]
+        return head_parts, arms, all_aliases
 
-        return cypher_str, all_aliases, [anchor_var]
+    @staticmethod
+    def _arm_variables(arm, anchor_var):
+        """Return the node and predicate variables an arm collects, in collect-map order."""
+        names = {}
+        for pred in arm:
+            for var in (pred['source'], pred['target']):
+                if var != anchor_var:
+                    names[var] = None
+            names[pred['predicate_id']] = None
+        return list(names)
+
+    def _call_count_queries(self, head_parts, anchor_var, arms, aliases, node_map, predicates):
+        """Return [total-count query, count-by-label query] built on the CALL head.
+
+        A flat MATCH over every edge would make one row per combination
+        (transcripts x pathways x ... for each anchor) before counting. Here
+        each anchor row is unfolded into one row per thing it found: the
+        anchor itself, then each arm's nodes and edges, arm by arm (UNION ALL).
+        The number of rows is a sum over the arms, never a product, and the
+        counts agree with the result query because both share the head.
+        """
+        imported = ', '.join([anchor_var] + aliases)
+        branches = [f"  RETURN '{anchor_var}' AS var_name, {anchor_var} AS entity"]
+        for arm, alias in zip(arms, aliases):
+            for var in self._arm_variables(arm, anchor_var):
+                branches.append(f"  UNWIND {alias} AS row RETURN '{var}' AS var_name, row.{var} AS entity")
+        unfold = f"CALL ({imported}) {{\n" + "\n  UNION ALL\n".join(branches) + "\n}"
+
+        def distinct(var):
+            return f"count(DISTINCT CASE WHEN var_name = '{var}' THEN entity END)"
+
+        node_vars = sorted({anchor_var} | {var for p in predicates for var in (p['source'], p['target'])})
+        predicate_ids = [p['predicate_id'] for p in predicates]
+
+        total_nodes = " + ".join(distinct(var) for var in node_vars)
+        total_edges = " + ".join(distinct(pid) for pid in predicate_ids) or "0"
+        total_return = f"RETURN ({total_nodes}) AS total_nodes, ({total_edges}) AS total_edges"
+
+        label_parts = [f"{distinct(var)} AS {var}_{node_map[var]['type']}" for var in node_vars]
+        label_parts += [
+            f"{distinct(p['predicate_id'])} AS {p['predicate_id']}_{p['type'].replace(' ', '_')}"
+            for p in predicates
+        ]
+        label_return = "RETURN " + ", ".join(label_parts)
+
+        head = '\n'.join(head_parts + [unfold])
+        return [f"{head}\n{total_return}", f"{head}\n{label_return}"]
 
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         self._attach_logic_groups(requests)
@@ -412,14 +480,33 @@ RETURN protein.id AS protein_id, component.id AS component_id
                 anchor_var = self._or_anchor(or_groups)
             else:
                 anchor_var = self._find_anchor_node(predicates, node_map=node_map)
-            or_predicate_ids = {pid for _, pids in or_groups for pid in pids}
 
             if anchor_var is not None:
+                or_predicate_groups = [pids for _, pids in or_groups]
                 cypher_query, aliases, outer_nodes = self._build_call_subquery(
                     predicates, node_map, predicate_map, anchor_var, limit, node_only,
-                    inner_limit=None, or_groups=[pids for _, pids in or_groups]
+                    inner_limit=None, or_groups=or_predicate_groups
                 )
                 cypher_queries.append(cypher_query)
+
+                has_virtual = any(self._is_virtual(pred) for pred in predicates)
+                if not has_virtual:
+                    # Counts are built on the same CALL head as the result query:
+                    # one row per anchor, never a product of the arms.
+                    head_parts, arms, aliases = self._call_subquery_head(
+                        predicates, node_map, anchor_var, or_groups=or_predicate_groups
+                    )
+                    cypher_queries.extend(
+                        self._call_count_queries(head_parts, anchor_var, arms, aliases, node_map, predicates)
+                    )
+                    return cypher_queries
+
+                # 'overlaps with' is a virtual edge (no stored relationship to walk),
+                # so these requests keep the flat count query built below.
+                if or_groups:
+                    raise LogicValidationError(
+                        "not supported yet by the Cypher backend: OR between predicates together with 'overlaps with'"
+                    )
 
                 # Collect all node_ids touched by predicates for count clause
                 all_node_ids = set()
@@ -429,11 +516,8 @@ RETURN protein.id AS protein_id, component.id AS component_id
                     all_node_ids.add(pred['target'])
                 list_of_node_ids = sorted(all_node_ids)
 
-                # Build flattened match/where for count queries (old-style, no CALL).
-                # OR'd predicates are matched optionally afterwards (_or_count_tail).
+                # Build flattened match/where for count queries (old-style, no CALL)
                 for pred in predicates:
-                    if pred['predicate_id'] in or_predicate_ids:
-                        continue
                     pred_id   = pred['predicate_id']
                     pred_type = pred['type'].replace(' ', '_').lower()
                     source_var = pred['source']
@@ -467,15 +551,6 @@ RETURN protein.id AS protein_id, component.id AS component_id
                         )
                     return_preds.append(pred_id)
 
-                optional_tail = ""
-                if or_groups:
-                    if anchor_var not in node_ids:
-                        # Every predicate is OR'd: the count query starts from the anchor alone.
-                        match_preds.insert(0, self.match_node(node_map[anchor_var], anchor_var))
-                        where_preds.extend(self.where_construct(node_map[anchor_var], anchor_var))
-                        node_ids.add(anchor_var)
-                    optional_tail = self._or_count_tail(or_groups, predicate_map, node_map)
-
                 full_return_preds = return_preds + list_of_node_ids
                 query_clauses = {
                     "match_preds": match_preds,
@@ -484,8 +559,7 @@ RETURN protein.id AS protein_id, component.id AS component_id
                     "list_of_node_ids": list_of_node_ids,
                     "return_preds": return_preds,
                     "predicates": predicates,
-                    "virtual_defs": virtual_defs,
-                    "optional_tail": optional_tail,
+                    "virtual_defs": virtual_defs
                 }
                 count = self.construct_count_clause(query_clauses, node_map, predicate_map)
                 cypher_queries.extend(count)
@@ -638,7 +712,6 @@ RETURN protein.id AS protein_id, component.id AS component_id
             {where_no_clause}
             {match_clause}
             {where_clause}
-            {query_clauses.get('optional_tail', '')}
             {virtual_setup}
             RETURN ({total_nodes_expr}) AS total_nodes, ({total_edges_expr}) AS total_edges
         '''
@@ -662,7 +735,6 @@ RETURN protein.id AS protein_id, component.id AS component_id
             {where_no_clause}
             {match_clause}
             {where_clause}
-            {query_clauses.get('optional_tail', '')}
             {virtual_setup}
             {return_label_clause}
         '''
@@ -675,6 +747,11 @@ RETURN protein.id AS protein_id, component.id AS component_id
         indicating this is a mixed or pure list query.
         """
         return any(self._node_has_list_values(node) for node in requests['nodes'])
+
+    @staticmethod
+    def _is_virtual(predicate):
+        """Return True for 'overlaps with', which is computed from positions, not stored."""
+        return predicate['type'].replace(' ', '_').lower() == 'overlaps_with'
 
     @staticmethod
     def _node_has_list_values(node):
@@ -1142,13 +1219,18 @@ RETURN protein.id AS protein_id, component.id AS component_id
     @staticmethod
     def _arm_size_checks(arms, aliases, or_groups):
         """Return the condition that keeps an anchor: every arm must match, except
-        that the arms of one OR group need only one of them to match."""
+        that the arms of one OR group need only one of them to match.
+
+        An arm holds one OR'd predicate plus the predicates ANDed after its far
+        node (validation guarantees no arm holds two OR'd predicates), and the
+        OR'd one need not come first, so every predicate of the arm is checked.
+        """
         alias_of = {pred['predicate_id']: alias for arm, alias in zip(arms, aliases) for pred in arm}
         group_of = {pid: index for index, group in enumerate(or_groups) for pid in group}
 
         checks, done_groups = [], set()
         for arm, alias in zip(arms, aliases):
-            index = group_of.get(arm[0]['predicate_id'])
+            index = next((group_of[p['predicate_id']] for p in arm if p['predicate_id'] in group_of), None)
             if index is None:
                 checks.append(f"size({alias}) > 0")
             elif index not in done_groups:
@@ -1156,31 +1238,6 @@ RETURN protein.id AS protein_id, component.id AS component_id
                 options = [f"size({alias_of[pid]}) > 0" for pid in or_groups[index]]
                 checks.append("(" + " OR ".join(options) + ")")
         return " AND ".join(checks)
-
-    def _or_count_tail(self, or_groups, predicate_map, node_map):
-        """Return OPTIONAL MATCH lines for OR'd predicates, then the OR filter.
-
-        A count query is one flat MATCH, which can only mean AND. OPTIONAL MATCH
-        leaves a missing edge as null instead of dropping the row, and
-        COUNT(DISTINCT x) ignores nulls, so the counts match the result query.
-        """
-        lines, filters = [], []
-        for kept_id, predicate_ids in or_groups:
-            for predicate_id in predicate_ids:
-                predicate = predicate_map[predicate_id]
-                kept_is_source = predicate['source'] == kept_id
-                far_id = predicate['target'] if kept_is_source else predicate['source']
-                far_pattern = self.match_node(node_map[far_id], far_id)
-                relationship = f"-[{predicate_id}:{predicate['type'].replace(' ', '_').lower()}]->"
-                if kept_is_source:
-                    pattern = f"({kept_id}){relationship}{far_pattern}"
-                else:
-                    pattern = f"{far_pattern}{relationship}({kept_id})"
-                far_conditions = self.where_construct(node_map[far_id], far_id)
-                where = f" WHERE {' AND '.join(far_conditions)}" if far_conditions else ""
-                lines.append(f"OPTIONAL MATCH {pattern}{where}")
-            filters.append("(" + " OR ".join(f"{pid} IS NOT NULL" for pid in predicate_ids) + ")")
-        return "\n".join(lines + [f"WITH * WHERE {' AND '.join(filters)}"])
 
     def _render_negated_predicate(self, predicate, far_node, var_name, kept_is_source):
         """Render "no such edge from this node" as NOT EXISTS { MATCH ... }.

@@ -155,7 +155,12 @@ def test_validate_logic_can_be_called_directly():
     "logic, message",
     [
         ([], "'logic' must be an object"),
-        ({"operator": "AND"}, "'logic' must contain a 'children' list and no 'nodes' or 'predicates'"),
+        ({"operator": "AND"}, "'logic' needs exactly one of 'children', 'nodes', 'predicates'"),
+        (
+            {"children": [node_group("OR", "n0", {"gene_name": "FTO"})],
+             "nodes": {"node_id": "n0", "properties": {"gene_name": "FTO"}}},
+            "'logic' needs exactly one of 'children', 'nodes', 'predicates'",
+        ),
         ({"children": []}, "'children' must be a non-empty list"),
         ({"children": ["not a group"]}, "each logic group must be an object"),
         (
@@ -164,7 +169,7 @@ def test_validate_logic_can_be_called_directly():
         ),
         (
             {"children": [{"nodes": {"node_id": "n0", "properties": {"gene_name": "FTO"}}}]},
-            "invalid operator None; expected AND, OR or NOT",
+            "each logic group needs an 'operator': AND, OR or NOT",
         ),
         (
             {"children": [{"operator": "OR", "predicates": ["p0"],
@@ -178,7 +183,8 @@ def test_validate_logic_can_be_called_directly():
     ],
     ids=[
         "logic-not-an-object",
-        "root-without-children",
+        "root-without-a-group",
+        "root-with-two-kinds",
         "empty-children",
         "group-not-an-object",
         "unknown-operator",
@@ -189,6 +195,65 @@ def test_validate_logic_can_be_called_directly():
 )
 def test_invalid_structure_is_rejected(logic, message):
     assert_rejected(make_request(logic), message)
+
+
+@pytest.mark.parametrize(
+    "logic, message",
+    [
+        (
+            # The typo from the review: ignored, the root fell back to AND.
+            {"operater": "NOT", "children": [node_group("AND", "n0", {"gene_name": "FTO"})]},
+            "unknown key 'operater' in 'logic'; allowed keys are children, nodes, operator, predicates "
+            "(did you mean 'operator'?)",
+        ),
+        (
+            {"children": [{"operator": "NOT", "operater": "NOT",
+                           "nodes": {"node_id": "n0", "properties": {"gene_name": "FTO"}}}]},
+            "unknown key 'operater' in a logic group; allowed keys are children, nodes, operator, predicates "
+            "(did you mean 'operator'?)",
+        ),
+        (
+            {"children": [{"operator": "NOT", "nodes": {"node_id": "n0", "propertes": {"gene_name": "FTO"}}}]},
+            "unknown key 'propertes' in 'nodes' of a logic group; allowed keys are node_id, properties "
+            "(did you mean 'properties'?)",
+        ),
+        (
+            {"comment": "no close match", "children": [node_group("AND", "n0", {"gene_name": "FTO"})]},
+            "unknown key 'comment' in 'logic'; allowed keys are children, nodes, operator, predicates",
+        ),
+    ],
+    ids=["typo-at-the-root", "typo-in-a-group", "typo-in-nodes", "unrelated-key"],
+)
+def test_unknown_keys_are_rejected(logic, message):
+    assert_rejected(make_request(logic), message)
+
+
+@pytest.mark.parametrize(
+    "logic, expected_child",
+    [
+        (
+            # The example from the review.
+            {"operator": "OR", "nodes": {"node_id": "n0", "properties": {"gene_name": "N", "gene_type": "rRNA"}}},
+            node_group("OR", "n0", {"gene_name": ["N"], "gene_type": ["rRNA"]}),
+        ),
+        (
+            {"operator": "not", "predicates": ["p1"]},
+            predicate_group("NOT", ["p1"]),
+        ),
+        (
+            # Like the root, a single group without an operator means AND.
+            {"nodes": {"node_id": "n0", "properties": {"gene_name": "FTO"}}},
+            node_group("AND", "n0", {"gene_name": ["FTO"]}),
+        ),
+    ],
+    ids=["property-group", "predicate-group", "no-operator"],
+)
+def test_single_group_at_the_root_is_wrapped_in_an_and_root(logic, expected_child):
+    request = make_request(logic)
+
+    validate_request(request, SCHEMA, None)
+
+    assert request["logic"] == {"operator": "AND", "children": [expected_child]}
 
 
 def test_nesting_deeper_than_the_limit_is_rejected():
@@ -441,7 +506,7 @@ def test_predicate_in_two_groups_is_rejected():
     assert_rejected(request, "predicate 'p1' is used in more than one predicate group")
 
 
-# --- OR between predicates: shared kept node, standalone far nodes -----------
+# --- OR between predicates: shared kept node, alternatives that stand alone --
 
 def test_or_predicate_ends_returns_the_shared_node_and_each_far_node():
     # p0: n0 -> n1 and p1: n0 -> n2 share gene n0.
@@ -458,8 +523,16 @@ def test_or_predicate_ends_works_when_the_kept_node_is_a_target():
     "predicate_ids, predicates, message",
     [
         (
-            ["p0", "p1"], [P0, P1, P2],
-            "not supported yet: OR on predicate 'p0', whose node 'n1' is also used by other predicates",
+            # transcript n1 -> pathway n2 joins the two alternatives.
+            ["p0", "p1"], [P0, P1, edge("p3", "n1", "n2")],
+            "not supported yet: OR on predicate 'p0', whose node 'n1' connects back to node 'n0' "
+            "through other predicates",
+        ),
+        (
+            # transcript n1 -> protein n3 -> gene n0: a longer way back.
+            ["p0", "p1"], [P0, P1, P2, edge("p4", "n3", "n0")],
+            "not supported yet: OR on predicate 'p0', whose node 'n1' connects back to node 'n0' "
+            "through other predicates",
         ),
         (
             ["p0", "p9"], [P0, edge("p9", "n1", "n0")],
@@ -470,19 +543,24 @@ def test_or_predicate_ends_works_when_the_kept_node_is_a_target():
             "not supported yet: OR on predicate 'p8', which starts and ends at the same node",
         ),
     ],
-    ids=["far-node-used-elsewhere", "two-edges-between-the-same-nodes", "self-loop"],
+    ids=["alternatives-joined", "alternative-leads-back", "two-edges-between-the-same-nodes", "self-loop"],
 )
 def test_or_group_without_standalone_alternatives_is_rejected(predicate_ids, predicates, message):
     with pytest.raises(LogicValidationError, match=f"^{re.escape(message)}$"):
         or_predicate_ends(predicate_ids, predicates)
 
 
-def test_validator_rejects_or_when_a_far_node_is_used_elsewhere():
+def test_or_accepts_edges_after_a_far_node():
+    # "A transcript that makes a protein" OR "a pathway": p2 is ANDed into p0's alternative.
+    assert or_predicate_ends(["p0", "p1"], [P0, P1, P2]) == ("n0", {"p0": "n1", "p1": "n2"})
+
+
+def test_validator_accepts_or_with_an_edge_after_a_far_node():
     request = make_request({"children": [predicate_group("OR", ["p0", "p1"])]})
     request["nodes"].append({"node_id": "n3", "id": "", "type": "protein", "properties": {}})
     request["predicates"].append({"type": "translates to", "source": "n1", "target": "n3"})
 
-    assert_rejected(request, "not supported yet: OR on predicate 'p0', whose node 'n1' is also used by other predicates")
+    validate_request(request, SCHEMA, None)
 
 
 # --- Error type --------------------------------------------------------------

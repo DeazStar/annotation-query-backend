@@ -1,3 +1,4 @@
+import difflib
 import networkx as nx
 import re
 
@@ -6,6 +7,11 @@ LOGIC_OPERATORS = frozenset({"AND", "OR", "NOT"})
 
 # A logic group holds exactly one of these keys.
 LOGIC_GROUP_KINDS = ("nodes", "predicates", "children")
+
+# Every key a logic group may have, and every key of its 'nodes' object.
+# Anything else is a mistake (e.g. "operater"): rejected, never ignored.
+LOGIC_GROUP_KEYS = frozenset({"operator", *LOGIC_GROUP_KINDS})
+LOGIC_NODE_KEYS = frozenset({"node_id", "properties"})
 
 # Upper bound on nesting, so a malformed or hostile request cannot recurse without limit.
 MAX_LOGIC_DEPTH = 10
@@ -168,6 +174,8 @@ def validate_logic(logic, node_map, predicate_map):
 
     Normalization done here, so later steps (canonicalization, fingerprinting,
     query generation) can rely on one shape:
+      - a root that is a single group, e.g. {"operator": "OR", "nodes": ...},
+        is wrapped as {"operator": "AND", "children": [that group]};
       - operators are upper-case, and the root operator defaults to AND;
       - node ids are cleaned with clean_string, like the nodes themselves;
       - every property value becomes a non-empty list of strings.
@@ -178,13 +186,23 @@ def validate_logic(logic, node_map, predicate_map):
         predicate_map: predicate_id -> predicate, after ids were assigned.
 
     Raises:
-        LogicValidationError: If the section is malformed, refers to unknown
-            nodes or predicates, or uses a feature not supported yet.
+        LogicValidationError: If the section is malformed, has unknown keys,
+            refers to unknown nodes or predicates, or uses a feature not
+            supported yet.
     """
     if not isinstance(logic, dict):
         raise LogicValidationError("'logic' must be an object")
-    if 'children' not in logic or any(key in logic for key in ('nodes', 'predicates')):
-        raise LogicValidationError("'logic' must contain a 'children' list and no 'nodes' or 'predicates'")
+    _require_known_keys(logic, LOGIC_GROUP_KEYS, "'logic'")
+    kinds = [kind for kind in LOGIC_GROUP_KINDS if kind in logic]
+    if len(kinds) != 1:
+        raise LogicValidationError("'logic' needs exactly one of 'children', 'nodes', 'predicates'")
+
+    if kinds[0] != 'children':
+        # One condition on its own: the same as an AND root with one child.
+        # The root defaults to AND, so a single group without an operator does too.
+        single_group = {**logic, 'operator': logic.get('operator', 'AND')}
+        logic.clear()
+        logic.update({'operator': 'AND', 'children': [single_group]})
 
     logic['operator'] = _normalize_operator(logic.get('operator', 'AND'))
     is_and_root = logic['operator'] == 'AND'
@@ -205,8 +223,11 @@ def _validate_group(group, node_map, predicate_map, depth, at_and_root):
         raise LogicValidationError(f"'logic' is nested too deeply: the maximum depth is {MAX_LOGIC_DEPTH}")
     if not isinstance(group, dict):
         raise LogicValidationError("each logic group must be an object")
+    _require_known_keys(group, LOGIC_GROUP_KEYS, "a logic group")
+    if 'operator' not in group:
+        raise LogicValidationError("each logic group needs an 'operator': AND, OR or NOT")
 
-    group['operator'] = _normalize_operator(group.get('operator'))
+    group['operator'] = _normalize_operator(group['operator'])
 
     kinds = [kind for kind in LOGIC_GROUP_KINDS if kind in group]
     if len(kinds) != 1:
@@ -231,6 +252,7 @@ def _validate_property_group(group, node_map):
     target = group['nodes']
     if not isinstance(target, dict):
         raise LogicValidationError("'nodes' in a logic group must be an object with 'node_id' and 'properties'")
+    _require_known_keys(target, LOGIC_NODE_KEYS, "'nodes' of a logic group")
 
     node_id = target.get('node_id')
     if not isinstance(node_id, str) or not node_id:
@@ -361,8 +383,12 @@ def or_predicate_ends(predicate_ids, predicates):
     edges connects it to a node like that edge's far node, together with
     whichever of those edges exist. Every backend uses this function:
       - the predicates must share exactly one node, which is kept;
-      - each predicate's other end is its far node, and no other predicate
-        may use it, so each alternative stands alone.
+      - each predicate's other end is its far node. Other predicates may
+        continue from the far node; they are ANDed inside that alternative
+        ("a transcript that makes a protein" OR "a pathway");
+      - nothing beyond a far node may lead back to the kept node, so each
+        alternative stands alone (two alternatives joined by another edge
+        could not be ORed).
 
     Args:
         predicate_ids: The ids in the OR group (two or more).
@@ -392,18 +418,36 @@ def or_predicate_ends(predicate_ids, predicates):
     for predicate in group:
         predicate_id = predicate['predicate_id']
         far_id = predicate['target'] if predicate['source'] == kept_id else predicate['source']
-        used_elsewhere = any(
-            far_id in (other['source'], other['target'])
-            for other in predicates
-            if other['predicate_id'] != predicate_id
-        )
-        if used_elsewhere:
+        if _leads_back_to(far_id, kept_id, predicate_id, predicates):
             raise LogicValidationError(
                 f"not supported yet: OR on predicate '{predicate_id}', whose node '{far_id}' "
-                "is also used by other predicates"
+                f"connects back to node '{kept_id}' through other predicates"
             )
         far_ids[predicate_id] = far_id
     return kept_id, far_ids
+
+
+def _leads_back_to(start_id, kept_id, skipped_predicate_id, predicates):
+    """Return True if a walk from start_id over the other predicates reaches kept_id.
+
+    The walk never steps onto kept_id, so it covers exactly the part of the
+    pattern that hangs off start_id: what gets ANDed into that alternative.
+    """
+    others = [p for p in predicates if p['predicate_id'] != skipped_predicate_id]
+    seen, to_visit = {start_id}, [start_id]
+    while to_visit:
+        node_id = to_visit.pop()
+        for other in others:
+            ends = (other['source'], other['target'])
+            if node_id not in ends:
+                continue
+            if kept_id in ends:
+                return True
+            for end in ends:
+                if end not in seen:
+                    seen.add(end)
+                    to_visit.append(end)
+    return False
 
 
 def _require_predicates_in_one_group(groups):
@@ -414,6 +458,20 @@ def _require_predicates_in_one_group(groups):
             if predicate_id in seen:
                 raise LogicValidationError(f"predicate '{predicate_id}' is used in more than one predicate group")
             seen.add(predicate_id)
+
+
+def _require_known_keys(obj, allowed, where):
+    """Raise if obj has a key outside allowed, naming the key and the closest allowed one.
+
+    A misspelled key must fail loudly: an ignored "operater": "NOT" would
+    leave the group on its default operator and return the opposite results.
+    """
+    for key in sorted(set(obj) - allowed, key=str):
+        message = f"unknown key {key!r} in {where}; allowed keys are {', '.join(sorted(allowed))}"
+        close = difflib.get_close_matches(str(key), allowed, n=1)
+        if close:
+            message += f" (did you mean {close[0]!r}?)"
+        raise LogicValidationError(message)
 
 
 def _normalize_operator(operator):

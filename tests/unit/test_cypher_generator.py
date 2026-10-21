@@ -6,6 +6,11 @@ They are a safety net: work on boolean 'logic' must not change the queries
 built for requests without it. A failing case means the generated text
 changed; if the change is intended, update the expected text in the same PR.
 
+Intended changes for requests without logic (see the cases): the count
+queries of the anchor path are built on the result query's CALL head instead
+of one flat MATCH, so they never multiply rows; and every CALL arm starts
+from the anchor.
+
 The snapshots record current behavior, not necessarily correct behavior.
 Whitespace is ignored when comparing; every other character must match.
 """
@@ -63,7 +68,7 @@ GENE_TRANSCRIPT_PATHWAY_BY_NAME = {
 
 GENE_PATHWAY_NO_EDGE = {"nodes": [node("n0", "gene", FTO), node("n1", "pathway")], "predicates": []}
 
-ANCHOR_TWO_ARMS_RESULT = """
+ANCHOR_TWO_ARMS_HEAD = """
     MATCH (n0:gene)
     WHERE n0.gene_name =~ '(?i)FTO' AND n0.gene_type =~ '(?i)protein_coding'
     CALL (n0) {
@@ -75,25 +80,82 @@ ANCHOR_TWO_ARMS_RESULT = """
       RETURN collect(DISTINCT {n2: n2, p1: p1}) AS p1
     }
     WITH * WHERE size(p0) > 0 AND size(p1) > 0
-    RETURN n0, p0, p1
 """
 
-ANCHOR_TWO_ARMS_MATCH = """
-    MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n0:gene)-[p1:genes_pathways]->(n2:pathway)
-    WHERE n0.gene_name =~ '(?i)FTO' AND n0.gene_type =~ '(?i)protein_coding'
+ANCHOR_TWO_ARMS_RESULT = ANCHOR_TWO_ARMS_HEAD + "RETURN n0, p0, p1"
+
+# The count queries reuse the result query's head (same anchors, same arms),
+# then turn each anchor row into one row per thing it found, so the rows add
+# up over the arms instead of multiplying (no transcripts x pathways rows).
+ANCHOR_TWO_ARMS_UNFOLD = """
+    CALL (n0, p0, p1) {
+      RETURN 'n0' AS var_name, n0 AS entity
+      UNION ALL
+      UNWIND p0 AS row RETURN 'n1' AS var_name, row.n1 AS entity
+      UNION ALL
+      UNWIND p0 AS row RETURN 'p0' AS var_name, row.p0 AS entity
+      UNION ALL
+      UNWIND p1 AS row RETURN 'n2' AS var_name, row.n2 AS entity
+      UNION ALL
+      UNWIND p1 AS row RETURN 'p1' AS var_name, row.p1 AS entity
+    }
 """
 
 ANCHOR_TWO_ARMS_COUNTS = (
-    ANCHOR_TWO_ARMS_MATCH + """
-    RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
-           (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
+    ANCHOR_TWO_ARMS_HEAD + ANCHOR_TWO_ARMS_UNFOLD + """
+    RETURN (count(DISTINCT CASE WHEN var_name = 'n0' THEN entity END)
+            + count(DISTINCT CASE WHEN var_name = 'n1' THEN entity END)
+            + count(DISTINCT CASE WHEN var_name = 'n2' THEN entity END)) AS total_nodes,
+           (count(DISTINCT CASE WHEN var_name = 'p0' THEN entity END)
+            + count(DISTINCT CASE WHEN var_name = 'p1' THEN entity END)) AS total_edges
     """,
-    ANCHOR_TWO_ARMS_MATCH + """
-    RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript,
-           COUNT(DISTINCT n2) AS n2_pathway, COUNT(DISTINCT p0) AS p0_transcribed_to,
-           COUNT(DISTINCT p1) AS p1_genes_pathways
+    ANCHOR_TWO_ARMS_HEAD + ANCHOR_TWO_ARMS_UNFOLD + """
+    RETURN count(DISTINCT CASE WHEN var_name = 'n0' THEN entity END) AS n0_gene,
+           count(DISTINCT CASE WHEN var_name = 'n1' THEN entity END) AS n1_transcript,
+           count(DISTINCT CASE WHEN var_name = 'n2' THEN entity END) AS n2_pathway,
+           count(DISTINCT CASE WHEN var_name = 'p0' THEN entity END) AS p0_transcribed_to,
+           count(DISTINCT CASE WHEN var_name = 'p1' THEN entity END) AS p1_genes_pathways
     """,
 )
+
+
+def call_counts(result_query, arms, labels):
+    """Return the expected (total-count, count-by-label) queries of the anchor path.
+
+    Spells out the shape written in full in ANCHOR_TWO_ARMS_COUNTS: the result
+    query up to its final RETURN, one UNION ALL branch per collected variable,
+    then one count(DISTINCT ...) per variable.
+
+    Args:
+        result_query: The expected result query (its final RETURN is dropped).
+        arms: [(alias, [variables])] in arm order; the first entry is the anchor
+            alone, as (anchor, []).
+        labels: [(variable, label)]: nodes in sorted order, then predicates in
+            request order, as the count-by-label query lists them.
+    """
+    head = result_query.rsplit("RETURN", 1)[0]
+    anchor = arms[0][0]
+    branches = [f"RETURN '{anchor}' AS var_name, {anchor} AS entity"] + [
+        f"UNWIND {alias} AS row RETURN '{var}' AS var_name, row.{var} AS entity"
+        for alias, variables in arms[1:] for var in variables
+    ]
+    unfold = f"CALL ({', '.join(alias for alias, _ in arms)}) {{ " + " UNION ALL ".join(branches) + " }"
+
+    def count(var):
+        return f"count(DISTINCT CASE WHEN var_name = '{var}' THEN entity END)"
+
+    nodes = [var for var, _ in labels if var.startswith("n")]
+    edges = [var for var, _ in labels if var.startswith("p")]
+    total = (f"RETURN ({' + '.join(map(count, nodes))}) AS total_nodes, "
+             f"({' + '.join(map(count, edges))}) AS total_edges")
+    by_label = "RETURN " + ", ".join(f"{count(var)} AS {var}_{label}" for var, label in labels)
+    return (f"{head} {unfold} {total}", f"{head} {unfold} {by_label}")
+
+
+def anchor_path(result_query, arms, labels):
+    """Return the expected (result, total-count, count-by-label) queries of the anchor path."""
+    return (result_query,) + call_counts(result_query, arms, labels)
+
 
 GENE_PATHWAY_COUNTS = (
     """
@@ -236,7 +298,7 @@ CASES = {
             ],
         },
         options={},
-        expected=(
+        expected=anchor_path(
             """
             MATCH (n0:gene)
             WHERE n0.gene_name =~ '(?i)FTO'
@@ -252,22 +314,82 @@ CASES = {
             WITH * WHERE size(p0_p1) > 0 AND size(p2) > 0
             RETURN n0, p0_p1, p2
             """,
+            arms=[('n0', []), ('p0_p1', ['n1', 'p0', 'n2', 'p1']), ('p2', ['n3', 'p2'])],
+            labels=[('n0', 'gene'), ('n1', 'transcript'), ('n2', 'protein'), ('n3', 'pathway'), ('p0', 'transcribed_to'), ('p1', 'translates_to'), ('p2', 'genes_pathways')],
+        ),
+    ),
+    "anchor-arm-starts-at-the-anchor": Case(
+        # transcript -> protein is listed first, but its arm still starts from the
+        # gene, so no MATCH in the arm scans every edge of one type.
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "protein"), node("n3", "pathway")],
+            "predicates": [
+                predicate("p1", "translates to", "n1", "n2"),
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p2", "genes pathways", "n0", "n3"),
+            ],
+        },
+        options={},
+        expected=anchor_path(
             """
-            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein),
-                  (n0:gene)-[p2:genes_pathways]->(n3:pathway)
+            MATCH (n0:gene)
             WHERE n0.gene_name =~ '(?i)FTO'
-            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2) + COUNT(DISTINCT n3)) AS total_nodes,
-                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1) + COUNT(DISTINCT p2)) AS total_edges
+            CALL (n0) {
+              MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+              MATCH (n1)-[p1:translates_to]->(n2:protein)
+              RETURN collect(DISTINCT {n1: n1, p0: p0, n2: n2, p1: p1}) AS p0_p1
+            }
+            CALL (n0) {
+              MATCH (n0)-[p2:genes_pathways]->(n3:pathway)
+              RETURN collect(DISTINCT {n3: n3, p2: p2}) AS p2
+            }
+            WITH * WHERE size(p0_p1) > 0 AND size(p2) > 0
+            RETURN n0, p0_p1, p2
             """,
+            arms=[("n0", []), ("p0_p1", ["n1", "p0", "n2", "p1"]), ("p2", ["n3", "p2"])],
+            labels=[("n0", "gene"), ("n1", "transcript"), ("n2", "protein"), ("n3", "pathway"),
+                    ("p1", "translates_to"), ("p0", "transcribed_to"), ("p2", "genes_pathways")],
+        ),
+    ),
+    "anchor-with-overlap-keeps-flat-counts": Case(
+        # 'overlaps with' is computed from positions, not stored, so its counts
+        # keep the flat MATCH (unchanged from before logic support).
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "enhancer")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "overlaps with", "n0", "n2"),
+            ],
+        },
+        options={},
+        expected=(
             """
-            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein),
-                  (n0:gene)-[p2:genes_pathways]->(n3:pathway)
+            MATCH (n0:gene)
             WHERE n0.gene_name =~ '(?i)FTO'
-            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript,
-                   COUNT(DISTINCT n2) AS n2_protein, COUNT(DISTINCT n3) AS n3_pathway,
-                   COUNT(DISTINCT p0) AS p0_transcribed_to, COUNT(DISTINCT p1) AS p1_translates_to,
-                   COUNT(DISTINCT p2) AS p2_genes_pathways
+            CALL (n0) {
+              MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+              RETURN collect(DISTINCT {n1: n1, p0: p0}) AS p0
+            }
+            CALL (n0) {
+              MATCH (n0)-[p1:overlaps_with]->(n2:enhancer)
+              RETURN collect(DISTINCT {n2: n2, p1: p1}) AS p1
+            }
+            WITH * WHERE size(p0) > 0 AND size(p1) > 0
+            RETURN n0, p0, p1
             """,
+        ) + tuple(
+            "MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n0:gene), (n2:enhancer) "
+            "WHERE n0.gene_name =~ '(?i)FTO' AND n0.chr = n2.chr AND toInteger(n0.start) < toInteger(n2.end) "
+            "AND toInteger(n2.start) < toInteger(n0.end) "
+            "WITH *, apoc.create.vRelationship(n0, 'overlaps_with', {source:'virtual'}, n2) AS p1 "
+            + ret
+            for ret in (
+                "RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes, "
+                "(COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges",
+                "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
+                "COUNT(DISTINCT n2) AS n2_enhancer, COUNT(DISTINCT p0) AS p0_transcribed_to, "
+                "COUNT(DISTINCT p1) AS p1_overlaps_with",
+            )
         ),
     ),
     # --- Comma-separated values: list path -----------------------------------
@@ -327,6 +449,29 @@ def test_generated_queries_match_snapshot(generator, name):
     queries = generate(generator, case)
 
     assert [one_line(q) for q in queries] == [one_line(q) for q in case.expected]
+
+
+def test_count_helper_matches_the_counts_written_in_full():
+    # call_counts spells out the same shape as ANCHOR_TWO_ARMS_COUNTS; if they
+    # drift apart, the snapshots built with the helper prove nothing.
+    built = call_counts(
+        ANCHOR_TWO_ARMS_RESULT,
+        arms=[("n0", []), ("p0", ["n1", "p0"]), ("p1", ["n2", "p1"])],
+        labels=[("n0", "gene"), ("n1", "transcript"), ("n2", "pathway"),
+                ("p0", "transcribed_to"), ("p1", "genes_pathways")],
+    )
+
+    assert [one_line(q) for q in built] == [one_line(q) for q in ANCHOR_TWO_ARMS_COUNTS]
+
+
+def test_anchor_path_counts_have_no_flat_match_over_several_edges(generator):
+    # A flat MATCH over several edges makes one row per combination before
+    # counting. Every anchor-path count query must start with the CALL head.
+    for name in ("anchor-two-arms", "anchor-chained-arm", "anchor-arm-starts-at-the-anchor"):
+        result_query, *count_queries = generate(generator, CASES[name])
+        head = one_line(result_query).rsplit(" RETURN ", 1)[0]
+        for query in count_queries:
+            assert one_line(query).startswith(head), name
 
 
 def test_generated_text_does_not_depend_on_hash_seed():
@@ -509,7 +654,7 @@ LOGIC_CASES = {
             ),
         },
         options={},
-        expected=(
+        expected=anchor_path(
             f"""
             MATCH (n0:gene)
             WHERE {BRCA1_OR_FTO}
@@ -525,19 +670,8 @@ LOGIC_CASES = {
             WITH * WHERE size(p0) > 0 AND size(p1) > 0
             RETURN n0, p0, p1
             """,
-            f"""
-            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
-            WHERE {BRCA1_OR_FTO} AND {NOT_RETAINED_INTRON.format(var="n2")}
-            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
-                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
-            """,
-            f"""
-            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
-            WHERE {BRCA1_OR_FTO} AND {NOT_RETAINED_INTRON.format(var="n2")}
-            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_pathway,
-                   COUNT(DISTINCT n2) AS n2_transcript, COUNT(DISTINCT p0) AS p0_genes_pathways,
-                   COUNT(DISTINCT p1) AS p1_transcribed_to
-            """,
+            arms=[('n0', []), ('p0', ['n1', 'p0']), ('p1', ['n2', 'p1'])],
+            labels=[('n0', 'gene'), ('n1', 'pathway'), ('n2', 'transcript'), ('p0', 'genes_pathways'), ('p1', 'transcribed_to')],
         ),
     ),
     "logic-filter-picks-the-anchor": Case(
@@ -552,7 +686,7 @@ LOGIC_CASES = {
             "logic": logic_tree(logic_group("OR", "n0", {"gene_name": ["BRCA1", "FTO"]})),
         },
         options={},
-        expected=(
+        expected=anchor_path(
             f"""
             MATCH (n0:gene)
             WHERE {BRCA1_OR_FTO}
@@ -564,19 +698,8 @@ LOGIC_CASES = {
             WITH * WHERE size(p0_p1) > 0
             RETURN n0, p0_p1
             """,
-            f"""
-            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein)
-            WHERE {BRCA1_OR_FTO}
-            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
-                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
-            """,
-            f"""
-            MATCH (n0:gene)-[p0:transcribed_to]->(n1:transcript), (n1:transcript)-[p1:translates_to]->(n2:protein)
-            WHERE {BRCA1_OR_FTO}
-            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript,
-                   COUNT(DISTINCT n2) AS n2_protein, COUNT(DISTINCT p0) AS p0_transcribed_to,
-                   COUNT(DISTINCT p1) AS p1_translates_to
-            """,
+            arms=[('n0', []), ('p0_p1', ['n1', 'p0', 'n2', 'p1'])],
+            labels=[('n0', 'gene'), ('n1', 'transcript'), ('n2', 'protein'), ('p0', 'transcribed_to'), ('p1', 'translates_to')],
         ),
     ),
     # --- List path -------------------------------------------------------------------
@@ -673,11 +796,44 @@ def test_or_groups_on_different_nodes_are_rejected(generator):
         generate(generator, case)
 
 
+def test_arm_size_checks_find_the_or_predicate_anywhere_in_an_arm():
+    # Defensive: arms start from the anchor today, but the OR'd predicate need not come first.
+    arms = [
+        [predicate("p2", "translates to", "n1", "n3"), predicate("p0", "transcribed to", "n0", "n1")],
+        [predicate("p1", "genes pathways", "n0", "n2")],
+    ]
+
+    checks = CypherQueryGenerator._arm_size_checks(arms, ["p2_p0", "p1"], [["p0", "p1"]])
+
+    assert checks == "(size(p2_p0) > 0 OR size(p1) > 0)"
+
+
+def test_or_together_with_overlaps_with_is_rejected(generator):
+    # 'overlaps with' keeps the flat count query, which can only mean AND.
+    case = Case(
+        request={
+            "nodes": [node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "enhancer")],
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "overlaps with", "n0", "n2"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
+        options={},
+        expected=(),
+    )
+
+    with pytest.raises(LogicValidationError, match=re.escape(
+        "not supported yet by the Cypher backend: OR between predicates together with 'overlaps with'"
+    )):
+        generate(generator, case)
+
+
 # --- Requests with OR between predicates (edges) --------------------------------
 #
 # The OR group's shared node is the CALL anchor, each OR'd predicate is its own
-# arm, and the arms' size checks are joined with OR. Count queries match the
-# OR'd predicates with OPTIONAL MATCH, since a flat MATCH can only mean AND.
+# arm, and the arms' size checks are joined with OR. Predicates that continue
+# from an OR'd predicate's far node are ANDed inside that predicate's arm.
 
 TRANSCRIPT_OR_PATHWAY_ARMS = """
     CALL (n0) {{
@@ -690,29 +846,46 @@ TRANSCRIPT_OR_PATHWAY_ARMS = """
     }}
 """
 
-TRANSCRIPT_OR_PATHWAY_OPTIONAL = """
-    OPTIONAL MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
-    OPTIONAL MATCH (n0)-[p1:genes_pathways]->(n2:pathway){pathway_where}
-    WITH * WHERE (p0 IS NOT NULL OR p1 IS NOT NULL)
-"""
-
-THREE_NODE_COUNTS = (
-    "RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes, "
-    "(COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges",
-    "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, COUNT(DISTINCT n2) AS n2_pathway, "
-    "COUNT(DISTINCT p0) AS p0_transcribed_to, COUNT(DISTINCT p1) AS p1_genes_pathways",
-)
+THREE_NODE_LABELS = [
+    ("n0", "gene"), ("n1", "transcript"), ("n2", "pathway"), ("p0", "transcribed_to"), ("p1", "genes_pathways"),
+]
 
 
 def or_edges_expected(gene_where, pathway_where=""):
     """Expected queries for gene n0 with OR [p0 -> transcript n1, p1 -> pathway n2]."""
     where = f"WHERE {gene_where}" if gene_where else ""
     arms = TRANSCRIPT_OR_PATHWAY_ARMS.format(pathway_where=pathway_where)
-    optional = TRANSCRIPT_OR_PATHWAY_OPTIONAL.format(pathway_where=pathway_where)
-    return (
+    return anchor_path(
         f"MATCH (n0:gene) {where} {arms} WITH * WHERE (size(p0) > 0 OR size(p1) > 0) RETURN n0, p0, p1",
-    ) + tuple(f"MATCH (n0:gene) {where} {optional} {ret}" for ret in THREE_NODE_COUNTS)
+        arms=[("n0", []), ("p0", ["n1", "p0"]), ("p1", ["n2", "p1"])],
+        labels=THREE_NODE_LABELS,
+    )
 
+
+# gene n0: OR [p0 -> transcript n1, p1 -> pathway n2], and transcript n1 -> protein n3 (p2).
+TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_NODES = [
+    node("n0", "gene", FTO), node("n1", "transcript"), node("n2", "pathway"), node("n3", "protein"),
+]
+TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_LABELS = [
+    ("n0", "gene"), ("n1", "transcript"), ("n2", "pathway"), ("n3", "protein"),
+    ("p0", "transcribed_to"), ("p1", "genes_pathways"), ("p2", "translates_to"),
+]
+
+TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_RESULT = """
+    MATCH (n0:gene)
+    WHERE n0.gene_name =~ '(?i)FTO'
+    CALL (n0) {
+      MATCH (n0)-[p0:transcribed_to]->(n1:transcript)
+      MATCH (n1)-[p2:translates_to]->(n3:protein)
+      RETURN collect(DISTINCT {n1: n1, p0: p0, n3: n3, p2: p2}) AS p0_p2
+    }
+    CALL (n0) {
+      MATCH (n0)-[p1:genes_pathways]->(n2:pathway)
+      RETURN collect(DISTINCT {n2: n2, p1: p1}) AS p1
+    }
+    WITH * WHERE (size(p0_p2) > 0 OR size(p1) > 0)
+    RETURN n0, p0_p2, p1
+"""
 
 OR_EDGE_CASES = {
     "or-edges-only": Case(
@@ -749,7 +922,7 @@ OR_EDGE_CASES = {
             "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
         },
         options={},
-        expected=(
+        expected=anchor_path(
             "MATCH (n0:gene) WHERE n0.gene_name =~ '(?i)FTO' "
             + TRANSCRIPT_OR_PATHWAY_ARMS.format(pathway_where="")
             + """
@@ -761,20 +934,53 @@ OR_EDGE_CASES = {
             WITH * WHERE (size(p0) > 0 OR size(p1) > 0) AND size(p2_p3) > 0
             RETURN n0, p0, p1, p2_p3
             """,
-        ) + tuple(
-            "MATCH (n0:gene)-[p2:transcribed_to]->(n3:transcript), (n3:transcript)-[p3:translates_to]->(n4:protein) "
-            "WHERE n0.gene_name =~ '(?i)FTO' "
-            + TRANSCRIPT_OR_PATHWAY_OPTIONAL.format(pathway_where="")
-            + ret
-            for ret in (
-                "RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2) + COUNT(DISTINCT n3) "
-                "+ COUNT(DISTINCT n4)) AS total_nodes, (COUNT(DISTINCT p0) + COUNT(DISTINCT p1) + COUNT(DISTINCT p2) "
-                "+ COUNT(DISTINCT p3)) AS total_edges",
-                "RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_transcript, "
-                "COUNT(DISTINCT n2) AS n2_pathway, COUNT(DISTINCT n3) AS n3_transcript, COUNT(DISTINCT n4) AS n4_protein, "
-                "COUNT(DISTINCT p0) AS p0_transcribed_to, COUNT(DISTINCT p1) AS p1_genes_pathways, "
-                "COUNT(DISTINCT p2) AS p2_transcribed_to, COUNT(DISTINCT p3) AS p3_translates_to",
-            )
+            arms=[("n0", []), ("p0", ["n1", "p0"]), ("p1", ["n2", "p1"]), ("p2_p3", ["n3", "p2", "n4", "p3"])],
+            labels=[
+                ("n0", "gene"), ("n1", "transcript"), ("n2", "pathway"), ("n3", "transcript"), ("n4", "protein"),
+                ("p0", "transcribed_to"), ("p1", "genes_pathways"), ("p2", "transcribed_to"),
+                ("p3", "translates_to"),
+            ],
+        ),
+    ),
+    "or-alternative-with-an-anded-edge": Case(
+        # "FTO has a transcript that makes a protein, OR a pathway": p2 continues
+        # from p0's far node, so it is ANDed inside p0's arm.
+        request={
+            "nodes": TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_NODES,
+            "predicates": [
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+                predicate("p2", "translates to", "n1", "n3"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
+        options={},
+        expected=anchor_path(
+            TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_RESULT,
+            arms=[("n0", []), ("p0_p2", ["n1", "p0", "n3", "p2"]), ("p1", ["n2", "p1"])],
+            labels=TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_LABELS,
+        ),
+    ),
+    "or-alternative-with-the-anded-edge-listed-first": Case(
+        # The same question with p2 listed first. Arms start from the anchor, so
+        # the result query is the same, and p0_p2 is still p0's alternative (OR).
+        request={
+            "nodes": TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_NODES,
+            "predicates": [
+                predicate("p2", "translates to", "n1", "n3"),
+                predicate("p0", "transcribed to", "n0", "n1"),
+                predicate("p1", "genes pathways", "n0", "n2"),
+            ],
+            "logic": logic_tree({"operator": "OR", "predicates": ["p0", "p1"]}),
+        },
+        options={},
+        expected=anchor_path(
+            TRANSCRIPT_WITH_PROTEIN_OR_PATHWAY_RESULT,
+            arms=[("n0", []), ("p0_p2", ["n1", "p0", "n3", "p2"]), ("p1", ["n2", "p1"])],
+            labels=[
+                ("n0", "gene"), ("n1", "transcript"), ("n2", "pathway"), ("n3", "protein"),
+                ("p2", "translates_to"), ("p0", "transcribed_to"), ("p1", "genes_pathways"),
+            ],
         ),
     ),
     "or-group-of-one-changes-nothing": Case(
@@ -881,7 +1087,7 @@ NOT_EDGE_CASES = {
             "logic": logic_tree(negated("p2")),
         },
         options={},
-        expected=(
+        expected=anchor_path(
             """
             MATCH (n0:gene)
             WHERE n0.gene_name =~ '(?i)FTO'
@@ -897,19 +1103,8 @@ NOT_EDGE_CASES = {
             WITH * WHERE size(p0) > 0 AND size(p1) > 0
             RETURN n0, p0, p1
             """,
-            """
-            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
-            WHERE n0.gene_name =~ '(?i)FTO' AND NOT EXISTS { MATCH (n2)-[:translates_to]->(n3:protein) }
-            RETURN (COUNT(DISTINCT n0) + COUNT(DISTINCT n1) + COUNT(DISTINCT n2)) AS total_nodes,
-                   (COUNT(DISTINCT p0) + COUNT(DISTINCT p1)) AS total_edges
-            """,
-            """
-            MATCH (n0:gene)-[p0:genes_pathways]->(n1:pathway), (n0:gene)-[p1:transcribed_to]->(n2:transcript)
-            WHERE n0.gene_name =~ '(?i)FTO' AND NOT EXISTS { MATCH (n2)-[:translates_to]->(n3:protein) }
-            RETURN COUNT(DISTINCT n0) AS n0_gene, COUNT(DISTINCT n1) AS n1_pathway,
-                   COUNT(DISTINCT n2) AS n2_transcript, COUNT(DISTINCT p0) AS p0_genes_pathways,
-                   COUNT(DISTINCT p1) AS p1_transcribed_to
-            """,
+            arms=[('n0', []), ('p0', ['n1', 'p0']), ('p1', ['n2', 'p1'])],
+            labels=[('n0', 'gene'), ('n1', 'pathway'), ('n2', 'transcript'), ('p0', 'genes_pathways'), ('p1', 'transcribed_to')],
         ),
     ),
     "not-two-edges-with-property-group": Case(

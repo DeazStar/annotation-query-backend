@@ -8,6 +8,7 @@ import copy
 import pytest
 
 from app.lib.query_canonical import canonicalize_graph, query_fingerprint
+from app.lib.validator import validate_request
 
 # Fingerprint settings shared by every test; only the request changes.
 FINGERPRINT_SETTINGS = {
@@ -150,6 +151,8 @@ def test_children_order_does_not_change_the_canonical_form():
 
 
 def test_unknown_keys_in_logic_are_dropped():
+    # validate_request rejects unknown keys; dropping them here as well means the
+    # fingerprint can never depend on them, even if a caller skips validation.
     logic = canonical_logic({
         "operator": "AND",
         "comment": "ignored",
@@ -201,6 +204,17 @@ def test_same_question_with_different_labels_has_same_fingerprint():
     relabeled["logic"] = {"operator": "AND", "children": [{"operator": "NOT", "predicates": ["edge_a"]}]}
 
     assert fingerprint(make_request(logic)) == fingerprint(relabeled)
+
+
+def test_single_group_at_the_root_has_the_same_fingerprint_as_the_wrapped_form():
+    # validate_request wraps a single root group, so both spellings share one cached answer.
+    schema = {"gene_genes_pathways_pathway": {}, "gene_transcribed_to_transcript": {}}
+    single = make_request({"operator": "NOT", "predicates": ["has_pathway"]})
+    wrapped = make_request({"operator": "AND", "children": [{"operator": "NOT", "predicates": ["has_pathway"]}]})
+    for request in (single, wrapped):
+        validate_request(request, schema, None)
+
+    assert fingerprint(single) == fingerprint(wrapped)
 
 
 def test_equivalent_logic_in_different_order_has_same_fingerprint():

@@ -203,6 +203,33 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
                 "node_count_by_label": meta_data.get('node_count_by_label', []),
                 "edge_count_by_label": meta_data.get('edge_count_by_label', []),
             }
+
+    LOCALIZATION_PREDICATES = ("located_in", "part_of")
+
+    def find_localized_proteins(self, protein_ids, location_ids, species="human"):
+        """
+        Returns (protein_id, location_id) pairs for proteins located_in or
+        part_of the given cellular_component location ids.
+        """
+        pairs_found = []
+        for protein_id in protein_ids:
+            for location_id in location_ids:
+                source = f"protein {protein_id}"
+                target = f"cellular_component {location_id}"
+                for predicate in self.LOCALIZATION_PREDICATES:
+                    match_clause = f"({predicate} ({source}) ({target}))"
+                    return_clause = f"(edge {predicate} ({source}) ({target}))"
+                    query_code = f"!(match &space (, {match_clause}) (, {return_clause}))"
+                    try:
+                        result = self.run_query(query_code)
+                    except Exception as e:
+                        logger.warning(f"MeTTa query error: {e}\nQuery: {query_code}")
+                        result = []
+                    matched = result[0] if result and isinstance(result[0], list) else result
+                    if matched:
+                        pairs_found.append((protein_id, location_id))
+                        break
+        return pairs_found
         
     def parse_and_serialize_properties(self, input, graph_components, result_type):
         (nodes, edges, _, _, meta_data) = self.process_result(input, graph_components, result_type)

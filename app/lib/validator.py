@@ -64,15 +64,14 @@ def validate_request(request, schema, source):
 
         node.setdefault('properties', {})
         if 'logic' in node:
-            logic = str(node['logic']).upper()
-            if logic not in ('AND', 'OR', 'NOT'):
+            node['logic'] = str(node['logic']).upper()
+            if node['logic'] not in ('AND', 'OR', 'NOT'):
                 raise Exception(f"invalid 'logic' value '{node['logic']}' — must be 'AND', 'OR', or 'NOT'")
-            node['logic'] = logic
-            if logic != 'AND':
-                if node['id']:
-                    raise Exception("'logic' OR/NOT cannot be used on a node with an 'id'; filter by properties instead")
-                if not node['properties']:
-                    raise Exception("'logic' OR/NOT requires at least one property on the node")
+            if node['logic'] == 'NOT':
+                raise Exception(
+                    "logic NOT requires a positive filter and is not supported "
+                    "with the current MeTTa request format"
+                )
 
         if 'chr' in node["properties"]:
             node["properties"]["chr"] = _with_chr_prefix(node["properties"]["chr"])

@@ -8,3 +8,7 @@ class TaskCancelledException(Exception):
 
 class QueryValidationError(ValueError):
     pass
+
+
+class LogicValidationError(QueryValidationError):
+    pass

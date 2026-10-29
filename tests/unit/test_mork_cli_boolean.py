@@ -1,6 +1,7 @@
 from threading import Event
 
 from app.services.mork_cli_generator import MorkCLIQueryGenerator
+from app.services.mork_cli_generator import _split_sexprs
 
 
 class _Symbol:
@@ -83,3 +84,22 @@ def test_boolean_query_passes_stop_event_to_inner_queries():
     generator._run_boolean_query(_query("query", spec), stop_event=stop_event)
 
     assert generator.stop_events == [stop_event]
+
+
+def test_split_sexprs_creates_one_act_source_per_property():
+    pattern = (
+        "(gene_type (gene $n) protein_coding) "
+        "(gene_name (gene $n) BRCA1)"
+    )
+
+    clauses = _split_sexprs(pattern)
+    sources = [f"(ACT mork_test {clause})" for clause in clauses]
+
+    assert len(sources) == 2
+    assert all(source.startswith("(ACT mork_test (") for source in sources)
+
+
+def test_split_sexprs_keeps_parentheses_inside_quoted_value():
+    pattern = '(description (gene $n) "contains (parentheses)")'
+
+    assert _split_sexprs(pattern) == [pattern]

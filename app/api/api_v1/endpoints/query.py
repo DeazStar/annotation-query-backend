@@ -346,10 +346,15 @@ def process_query(
                         "answer": existing_doc.answer,  # None or a graph-level summary
                     }
 
-            # Generate Query using canonical requests for stable caching
-            query = db_instance.query_Generator(
-                canonical_req, canonical_node_map, limit, node_only
-            )
+            # Generate Query using canonical requests for stable caching.
+            # A backend that cannot build a valid 'logic' request raises
+            # LogicValidationError: that is the caller's request, so answer 400.
+            try:
+                query = db_instance.query_Generator(
+                    canonical_req, canonical_node_map, limit, node_only
+                )
+            except LogicValidationError as e:
+                raise HTTPException(status_code=400, detail=str(e))
             result_query = query[0]
             total_count_query = query[1]
             count_by_label_query = query[2]
@@ -392,10 +397,11 @@ def process_query(
         count_by_label = db_instance.run_query(count_by_label_query)
         count_result = [total_count[0], count_by_label[0]]
 
+        counted_nodes, counted_predicates = counted_nodes_and_predicates(requests)
         meta_data = db_instance.parse_and_serialize(
             count_result,
             schema_manager.full_schema_representation,
-            graph_components,
+            {**graph_components, "nodes": counted_nodes, "predicates": counted_predicates},
             result_type="count",
         )
 

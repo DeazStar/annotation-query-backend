@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 from app.services.llm_models import OpenAIModel, GeminiModel
 from app.services.graph_handler import Graph_Summarizer
+from app.lib.validator import counted_nodes_and_predicates, negated_predicate_ends, or_predicate_ends
 import logging
 
 logger = logging.getLogger(__name__)
@@ -184,6 +185,85 @@ class LLMHandler:
                 title = self.generate_title_no_llm(request, node_map)
                 return title
             
+    def _logic_phrases(self, req, node_map):
+        """Return one short phrase per top-level group of the request's 'logic'."""
+        logic = req.get('logic')
+        if not logic:
+            return []
+        groups = logic['children'] if logic.get('operator', 'AND') == 'AND' else [logic]
+        predicates = req.get('predicates', [])
+        predicate_map = {predicate['predicate_id']: predicate for predicate in predicates}
+
+        phrases = []
+        for group in groups:
+            if 'predicates' in group:
+                phrase = self._predicate_group_phrase(group, predicate_map, predicates, node_map)
+            else:
+                node_type = self._type_label(node_map.get(self._group_node_id(group)))
+                phrase = f"{node_type} {self._condition_phrase(group)}"
+            if phrase:
+                phrases.append(phrase)
+        return phrases
+
+    def _predicate_group_phrase(self, group, predicate_map, predicates, node_map):
+        """Describe NOT ("has no ... link") or OR ("has a ... or a ... link") on predicates."""
+        operator = group['operator']
+        if operator == 'NOT':
+            parts = []
+            for predicate_id in group['predicates']:
+                kept_id, far_id = negated_predicate_ends(predicate_map[predicate_id], predicates)
+                parts.append((kept_id, self._link_phrase(predicate_map[predicate_id], kept_id, far_id, node_map)))
+            kept_type = self._type_label(node_map.get(parts[0][0]))
+            return f"{kept_type} has no " + " or ".join(link for _, link in parts)
+        if operator == 'OR' and len(group['predicates']) > 1:
+            kept_id, far_ids = or_predicate_ends(group['predicates'], predicates)
+            links = [
+                self._link_phrase(predicate_map[predicate_id], kept_id, far_ids[predicate_id], node_map)
+                for predicate_id in group['predicates']
+            ]
+            return f"{self._type_label(node_map.get(kept_id))} has a " + " or a ".join(links)
+        return ""  # AND, or OR of one predicate: already described by the sentence
+
+    def _link_phrase(self, predicate, kept_id, far_id, node_map):
+        direction = "to" if predicate['source'] == kept_id else "from"
+        return f"'{predicate['type']}' link {direction} a {self._type_label(node_map.get(far_id))}"
+
+    def _condition_phrase(self, group):
+        """Describe a property group, or a nest of them, e.g. "has gene name FTO or gene type lncRNA"."""
+        parts = self._condition_parts(group)
+        if group['operator'] == 'NOT':
+            return "has no " + " or ".join(parts)
+        return "has " + f" {group['operator'].lower()} ".join(parts)
+
+    def _condition_parts(self, group):
+        if 'nodes' in group:
+            return [
+                f"{name.replace('_', ' ')} {value}"
+                for name, values in sorted(group['nodes']['properties'].items())
+                for value in (values if isinstance(values, list) else [values])
+            ]
+        parts = []
+        for child in group['children']:
+            child_parts = self._condition_parts(child)
+            joiner = " or " if child['operator'] == 'NOT' else f" {child['operator'].lower()} "
+            text = joiner.join(child_parts)
+            if child['operator'] == 'NOT':
+                text = f"no {text}"
+            parts.append(f"({text})" if len(child_parts) > 1 else text)
+        return parts
+
+    @staticmethod
+    def _group_node_id(group):
+        while 'nodes' not in group:
+            group = group['children'][0]
+        return group['nodes']['node_id']
+
+    @staticmethod
+    def _type_label(node):
+        if not node:
+            return "Entity"
+        return node.get('type', 'entity').replace('_', ' ').title()
+
     def _get_node_label(self, node):
         if not node: return "Unknown Entity", True
 
@@ -271,7 +351,20 @@ class LLMHandler:
         return n_type, True
 
     def generate_title_no_llm(self, req, node_map):
-        predicates = req.get('predicates', [])
+        """Build a title from the request. The sentence describes what is returned;
+        phrases for the boolean 'logic' section are added after ", where"."""
+        title = self._title_without_logic(req, node_map)
+        phrases = self._logic_phrases(req, node_map)
+        if phrases:
+            title = f"{title}, where {' and '.join(phrases)}"
+        return title
+
+    def _title_without_logic(self, req, node_map):
+        # Predicates under NOT and their far nodes are never returned; their
+        # meaning is described by _logic_phrases instead.
+        shown_nodes, predicates = counted_nodes_and_predicates(req)
+        shown_ids = {node['node_id'] for node in shown_nodes}
+        node_map = {node_id: node for node_id, node in node_map.items() if node_id in shown_ids}
 
         if not predicates:
             # List items, adding "Unnamed" if generic

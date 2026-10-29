@@ -152,22 +152,24 @@ class MorkQueryGenerator:
 
     def _boolean_spec(self, nodes):
         """Describe OR/NOT filtering for a single property-filtered node, else None."""
-        flagged = [
-            n for n in nodes
-            if n.get("logic", "AND") != "AND" and not n.get("id") and n.get("properties")
-        ]
+        flagged = [n for n in nodes if str(n.get("logic", "AND")).upper() != "AND"]
         if not flagged:
             return None
         if len(nodes) != 1:
             raise ValueError("logic OR/NOT is only supported for single-node queries on MORK")
         node = nodes[0]
+        if node.get("id"):
+            raise ValueError("logic OR/NOT cannot be used on a node with an id")
+        if not node.get("properties"):
+            raise ValueError("logic OR/NOT requires at least one property")
+        logic = str(node["logic"]).upper()
         ident = "$" + node["node_id"]
         ntype = node["type"]
         clauses = [
             f"({key} ({ntype} {ident}) {self._serialize_metta_value(value)})"
             for key, value in node["properties"].items()
         ]
-        if node["logic"] == "OR":
+        if logic == "OR":
             return {"logic": "OR", "patterns": clauses}
         return {"logic": "NOT", "include": f"({ntype} {ident})", "exclude": " ".join(clauses)}
 

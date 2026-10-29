@@ -29,9 +29,16 @@ def validate_request(request, schema, source):
         node['node_id'] = clean_string(node_id)
 
         node.setdefault('properties', {})
-        node.setdefault('logic', 'AND')
-        if node['logic'] not in ('AND', 'OR', 'NOT'):
-            raise Exception(f"invalid 'logic' value '{node['logic']}' — must be 'AND', 'OR', or 'NOT'")
+        if 'logic' in node:
+            logic = str(node['logic']).upper()
+            if logic not in ('AND', 'OR', 'NOT'):
+                raise Exception(f"invalid 'logic' value '{node['logic']}' — must be 'AND', 'OR', or 'NOT'")
+            node['logic'] = logic
+            if logic != 'AND':
+                if node['id']:
+                    raise Exception("'logic' OR/NOT cannot be used on a node with an 'id'; filter by properties instead")
+                if not node['properties']:
+                    raise Exception("'logic' OR/NOT requires at least one property on the node")
 
         if 'chr' in node["properties"]:
             chr_property = node["properties"]["chr"]

@@ -11,6 +11,7 @@ from hyperon import MeTTa
 
 from .metta import metta_seralizer
 from .mork import MORK, ManagedMORK, get_count_by_label, get_total_counts
+from app.error import QueryValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +72,12 @@ class MorkQueryGenerator:
             escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
         if isinstance(value, str):
-            if any(c in value for c in (' ', '\n', '(', ')', '[', ']', '{', '}')):
-                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            normalized = value.replace(" ", "_")
+            if any(c in normalized for c in ('\n', '(', ')', '[', ']', '{', '}')):
+                escaped = normalized.replace("\\", "\\\\").replace('"', '\\"')
                 return f'"{escaped}"'
             else:
-                return str(value)
+                return normalized
         escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
 
@@ -150,6 +152,36 @@ class MorkQueryGenerator:
                         break
         return pairs_found
 
+    def _boolean_spec(self, nodes):
+        """Describe OR/NOT filtering for a single property-filtered node, else None."""
+        flagged = [n for n in nodes if str(n.get("logic", "AND")).upper() != "AND"]
+        if not flagged:
+            return None
+        if any(str(n.get("logic", "AND")).upper() == "NOT" for n in flagged) and not any(
+            str(n.get("logic", "AND")).upper() == "AND" for n in nodes
+        ):
+            raise QueryValidationError(
+                "logic NOT requires at least one positive filter; "
+                "an unbounded NOT query is not supported on MORK"
+            )
+        if len(nodes) != 1:
+            raise QueryValidationError("logic OR/NOT is only supported for single-node queries on MORK")
+        node = nodes[0]
+        if node.get("id"):
+            raise QueryValidationError("logic OR/NOT cannot be used on a node with an id")
+        if not node.get("properties"):
+            raise QueryValidationError("logic OR/NOT requires at least one property")
+        logic = str(node["logic"]).upper()
+        ident = "$" + node["node_id"]
+        ntype = node["type"]
+        clauses = [
+            f"({key} ({ntype} {ident}) {self._serialize_metta_value(value)})"
+            for key, value in node["properties"].items()
+        ]
+        if logic == "OR":
+            return {"logic": "OR", "patterns": clauses}
+        return {"logic": "NOT", "include": f"({ntype} {ident})", "exclude": " ".join(clauses)}
+
     def query_Generator(self, requests, node_map, limit=None, node_only=False):
         # this will do only transfomration
         nodes = requests["nodes"]
@@ -213,7 +245,14 @@ class MorkQueryGenerator:
                 self.current_id,
             )
 
+            boolean_spec = self._boolean_spec(nodes)
+            if boolean_spec:
+                return [q + (boolean_spec,) for q in (query, total_count_query, label_count_query)]
             return [query, total_count_query, label_count_query]
+
+        for node in nodes:
+            if node.get("logic", "AND") != "AND":
+                raise QueryValidationError("logic OR/NOT is not supported together with predicates on MORK yet")
         for predicate in predicates:
             predicate_type = predicate["type"].replace(" ", "_")
             source_id = predicate["source"]

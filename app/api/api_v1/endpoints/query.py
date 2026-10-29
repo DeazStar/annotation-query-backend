@@ -30,7 +30,7 @@ from app.workers.celery_app import redis_state
 from app.annotation_controller import process_full_data
 from app.lib.email import send_email
 from app.lib.query_canonical import canonicalize_graph, query_fingerprint
-from app.lib.validator import LogicValidationError, counted_nodes_and_predicates
+from app.error import QueryValidationError
 import threading
 from app.core.config import settings
 from app.error import LogicValidationError
@@ -460,6 +460,8 @@ def process_query(
         }
         return response
 
+    except QueryValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:

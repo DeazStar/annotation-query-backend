@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
@@ -42,11 +43,38 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         import uuid
         return str(uuid.uuid4())[:8]
 
+    def _serialize_metta_value(self, value):
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        if value is None:
+            raise ValueError("MeTTa property values cannot be null")
+        if not isinstance(value, str):
+            value = str(value)
+
+        value = value.strip()
+        if not value:
+            raise ValueError("MeTTa property values cannot be empty")
+        if any(character in value for character in ('\n', '\r', '\t', '(', ')', '"', '\\')):
+            raise ValueError("MeTTa property values contain unsupported characters")
+        if value.startswith(("$", ";")):
+            raise ValueError("MeTTa property values cannot start with '$' or ';'")
+
+        if ":" in value and not value.startswith(("http://", "https://")):
+            value = value.split(":", 1)[1]
+        value = value.replace(" ", "_").replace("->", "-").strip("_")
+        value = re.sub(r"[^A-Za-z0-9_:.\-]", "", value)
+        if not value or any(character.isspace() for character in value):
+            raise ValueError("MeTTa property values must contain a valid atom")
+        return value
+
     def construct_node_representation(self, node, identifier):
         node_type = node['type']
         node_representation = ''
         for key, value in node['properties'].items():
-            node_representation += f' ({key} ({node_type + " " + identifier}) {value})'
+            serialized = self._serialize_metta_value(value)
+            node_representation += f' ({key} ({node_type + " " + identifier}) {serialized})'
         return node_representation
 
     class _FakeGroundedValue:

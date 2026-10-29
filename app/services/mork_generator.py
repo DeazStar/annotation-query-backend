@@ -156,6 +156,13 @@ class MorkQueryGenerator:
         flagged = [n for n in nodes if str(n.get("logic", "AND")).upper() != "AND"]
         if not flagged:
             return None
+        if any(str(n.get("logic", "AND")).upper() == "NOT" for n in flagged) and not any(
+            str(n.get("logic", "AND")).upper() == "AND" for n in nodes
+        ):
+            raise ValueError(
+                "logic NOT requires at least one positive filter; "
+                "an unbounded NOT query is not supported on MORK"
+            )
         if len(nodes) != 1:
             raise ValueError("logic OR/NOT is only supported for single-node queries on MORK")
         node = nodes[0]

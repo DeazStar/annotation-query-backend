@@ -30,6 +30,7 @@ from app.workers.celery_app import redis_state
 from app.annotation_controller import process_full_data
 from app.lib.email import send_email
 from app.lib.query_canonical import canonicalize_graph, query_fingerprint
+from app.lib.validator import LogicValidationError, counted_nodes_and_predicates
 import threading
 from app.core.config import settings
 from app.error import LogicValidationError
@@ -346,7 +347,9 @@ def process_query(
                         "answer": existing_doc.answer,  # None or a graph-level summary
                     }
 
-            # Generate Query using canonical requests for stable caching
+            # Generate Query using canonical requests for stable caching.
+            # A backend that cannot build a valid 'logic' request raises
+            # LogicValidationError: that is the caller's request, so answer 400.
             try:
                 query = db_instance.query_Generator(
                     canonical_req, canonical_node_map, limit, node_only
@@ -395,10 +398,11 @@ def process_query(
         count_by_label = db_instance.run_query(count_by_label_query)
         count_result = [total_count[0], count_by_label[0]]
 
+        counted_nodes, counted_predicates = counted_nodes_and_predicates(requests)
         meta_data = db_instance.parse_and_serialize(
             count_result,
             schema_manager.full_schema_representation,
-            graph_components,
+            {**graph_components, "nodes": counted_nodes, "predicates": counted_predicates},
             result_type="count",
         )
 

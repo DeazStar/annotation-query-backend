@@ -1,5 +1,8 @@
 from threading import Event
 
+import pytest
+
+from app.error import QueryValidationError
 from app.services.mork_cli_generator import MorkCLIQueryGenerator
 from app.services.mork_cli_generator import _split_sexprs
 
@@ -103,3 +106,25 @@ def test_split_sexprs_keeps_parentheses_inside_quoted_value():
     pattern = '(description (gene $n) "contains (parentheses)")'
 
     assert _split_sexprs(pattern) == [pattern]
+
+
+@pytest.mark.parametrize(
+    "node, message",
+    [
+        (
+            {"node_id": "n1", "id": "gene-1", "type": "gene", "logic": "OR",
+             "properties": {"gene_type": "protein_coding"}},
+            "logic OR/NOT cannot be used on a node with an id",
+        ),
+        (
+            {"node_id": "n1", "id": "", "type": "gene", "logic": "NOT",
+             "properties": {}},
+            "logic NOT requires at least one positive filter",
+        ),
+    ],
+)
+def test_invalid_boolean_filters_raise_query_validation_error(node, message):
+    generator = MorkCLIQueryGenerator.__new__(MorkCLIQueryGenerator)
+
+    with pytest.raises(QueryValidationError, match=message):
+        generator._boolean_spec([node])

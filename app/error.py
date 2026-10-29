@@ -4,3 +4,7 @@ class ThreadStopException(Exception):
         
 class TaskCancelledException(Exception):
     pass
+
+
+class QueryValidationError(ValueError):
+    pass

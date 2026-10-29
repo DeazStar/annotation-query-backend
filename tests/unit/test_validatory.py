@@ -37,6 +37,23 @@ def test_validation_preserves_fingerprint_without_logic():
     assert "logic" not in request["nodes"][0]
     assert after_fingerprint == before_fingerprint
 
+
+def test_not_logic_is_rejected_without_a_positive_filter():
+    request = {
+        "nodes": [{
+            "node_id": "n1",
+            "id": "",
+            "type": "gene",
+            "logic": "not",
+            "properties": {"gene_type": "protein_coding"},
+        }],
+        "predicates": [],
+    }
+
+    with pytest.raises(Exception, match="logic NOT requires a positive filter"):
+        validate_request(request, schema_manager.schema, "hypothesis")
+
+
 def test_node_is_missing():
     request = []
     with pytest.raises(Exception, match="'nodes' key is missing"):

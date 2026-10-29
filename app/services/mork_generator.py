@@ -71,11 +71,12 @@ class MorkQueryGenerator:
             escaped = raw.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
         if isinstance(value, str):
-            if any(c in value for c in (' ', '\n', '(', ')', '[', ']', '{', '}')):
-                escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            normalized = value.replace(" ", "_")
+            if any(c in normalized for c in ('\n', '(', ')', '[', ']', '{', '}')):
+                escaped = normalized.replace("\\", "\\\\").replace('"', '\\"')
                 return f'"{escaped}"'
             else:
-                return str(value)
+                return normalized
         escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
         return f'"{escaped}"'
 

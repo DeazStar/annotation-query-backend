@@ -624,13 +624,19 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
         logger.info("Query executed", extra={"query": str(query_obj), "duration_ms": duration, "status": "capped" if _atom_cap else "success"})
         return [all_atoms]
 
-    def _run_boolean_query(self, query, species='human'):
+    def _run_boolean_query(self, query, stop_event=None, species='human'):
         """OR/NOT: run several single-pattern queries and combine the atoms."""
         pattern_tuple, template_tuple, query_type, current_id = query[:4]
         spec = query[4]
 
         def run(pattern):
-            atoms = self.run_query(((pattern,), template_tuple, query_type, current_id), species=species)
+            if stop_event is not None and stop_event.is_set():
+                return []
+            atoms = self.run_query(
+                ((pattern,), template_tuple, query_type, current_id),
+                stop_event=stop_event,
+                species=species,
+            )
             return atoms[0] if atoms else []
 
         if spec["logic"] == "OR":
@@ -641,14 +647,36 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                     if key not in seen:
                         seen.add(key)
                         merged.append(atom)
-            return [merged]
-        excluded = {str(atom) for atom in run(spec["exclude"])}
-        return [[atom for atom in run(spec["include"]) if str(atom) not in excluded]]
+            filtered = merged
+        else:
+            excluded = {str(atom) for atom in run(spec["exclude"])}
+            filtered = [atom for atom in run(spec["include"]) if str(atom) not in excluded]
+
+        def atom_label(atom):
+            children = atom.get_children() if hasattr(atom, "get_children") else ()
+            if len(children) < 2 or not hasattr(children[1], "get_children"):
+                return None
+            node = children[1].get_children()
+            return node[0].get_name() if node and hasattr(node[0], "get_name") else None
+
+        if query_type == "total_count":
+            return [{"node_count": len(filtered), "edge_count": 0}]
+        if query_type == "label_count":
+            counts = {}
+            for atom in filtered:
+                label = atom_label(atom)
+                if label:
+                    counts[label] = counts.get(label, 0) + 1
+            return [{"node_count_by_label": [
+                {"label": label, "count": count}
+                for label, count in counts.items()
+            ], "edge_count_by_label": []}]
+        return [filtered]
 
     def run_query(self, query, stop_event=None, species='human'):
         start_time = time.time()
         if len(query) > 4 and query[4]:
-            return self._run_boolean_query(query, species)
+            return self._run_boolean_query(query, stop_event=stop_event, species=species)
         pattern_tuple, template_tuple, query_type, _ = query[:4]
 
         pattern_str = " ".join(pattern_tuple)

@@ -1,0 +1,85 @@
+from threading import Event
+
+from app.services.mork_cli_generator import MorkCLIQueryGenerator
+
+
+class _Symbol:
+    def __init__(self, name):
+        self._name = name
+
+    def get_name(self):
+        return self._name
+
+    def __str__(self):
+        return self._name
+
+
+class _Expression:
+    def __init__(self, *children):
+        self._children = children
+
+    def get_children(self):
+        return self._children
+
+    def __str__(self):
+        return f"({' '.join(str(child) for child in self._children)})"
+
+
+def _node_atom(node_id, node_type="gene"):
+    return _Expression(_Symbol("result"), _Expression(_Symbol(node_type), _Symbol(node_id)))
+
+
+class _BooleanGenerator(MorkCLIQueryGenerator):
+    def __init__(self, atoms_by_pattern):
+        self.atoms_by_pattern = atoms_by_pattern
+        self.stop_events = []
+
+    def run_query(self, query, stop_event=None, species="human"):
+        self.stop_events.append(stop_event)
+        return [self.atoms_by_pattern.get(query[0][0], [])]
+
+
+def _query(query_type, spec):
+    return (("unused",), ("template",), query_type, "query-id", spec)
+
+
+def test_boolean_counts_match_or_result_nodes():
+    atoms = {
+        "property_a": [_node_atom("g1"), _node_atom("g2")],
+        "property_b": [_node_atom("g2"), _node_atom("g3")],
+    }
+    generator = _BooleanGenerator(atoms)
+    spec = {"logic": "OR", "patterns": ["property_a", "property_b"]}
+
+    result = generator._run_boolean_query(_query("query", spec))
+    count = generator._run_boolean_query(_query("total_count", spec))
+    label_count = generator._run_boolean_query(_query("label_count", spec))
+
+    assert len(result[0]) == count[0]["node_count"] == 3
+    assert sum(item["count"] for item in label_count[0]["node_count_by_label"]) == len(result[0])
+
+
+def test_boolean_counts_match_not_result_nodes():
+    atoms = {
+        "include": [_node_atom("g1"), _node_atom("g2"), _node_atom("g3")],
+        "exclude": [_node_atom("g2")],
+    }
+    generator = _BooleanGenerator(atoms)
+    spec = {"logic": "NOT", "include": "include", "exclude": "exclude"}
+
+    result = generator._run_boolean_query(_query("query", spec))
+    count = generator._run_boolean_query(_query("total_count", spec))
+    label_count = generator._run_boolean_query(_query("label_count", spec))
+
+    assert len(result[0]) == count[0]["node_count"] == 2
+    assert sum(item["count"] for item in label_count[0]["node_count_by_label"]) == len(result[0])
+
+
+def test_boolean_query_passes_stop_event_to_inner_queries():
+    generator = _BooleanGenerator({"property": [_node_atom("g1")]})
+    stop_event = Event()
+    spec = {"logic": "OR", "patterns": ["property"]}
+
+    generator._run_boolean_query(_query("query", spec), stop_event=stop_event)
+
+    assert generator.stop_events == [stop_event]

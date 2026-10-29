@@ -1,5 +1,7 @@
 import pytest
+from copy import deepcopy
 from app.lib.validator import validate_request
+from app.lib.query_canonical import canonicalize_graph, query_fingerprint
 from app.services.schema_data import SchemaManager
 
 schema_manager = SchemaManager(
@@ -8,6 +10,32 @@ schema_manager = SchemaManager(
     human_datasources_config_path='./config/human_schema/data_source_schemas',
     fly_schema_config_path='./config/fly_base_schema/dmel_full_schema_config.yaml',
 )
+
+
+def test_validation_preserves_fingerprint_without_logic():
+    request = {
+        "nodes": [{
+            "node_id": "n1",
+            "id": "",
+            "type": "gene",
+            "properties": {"gene_type": "protein_coding"},
+        }],
+        "predicates": [],
+    }
+    before, _ = canonicalize_graph(deepcopy(request))
+    before_fingerprint = query_fingerprint(
+        before, "human", "all", None, False, True, "metta"
+    )
+
+    validate_request(request, schema_manager.schema, "hypothesis")
+
+    after, _ = canonicalize_graph(deepcopy(request))
+    after_fingerprint = query_fingerprint(
+        after, "human", "all", None, False, True, "metta"
+    )
+
+    assert "logic" not in request["nodes"][0]
+    assert after_fingerprint == before_fingerprint
 
 def test_node_is_missing():
     request = []

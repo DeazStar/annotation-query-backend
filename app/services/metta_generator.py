@@ -71,13 +71,14 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         """
         node_type = node["type"]
         ident = "$" + node["node_id"]
+        logic = node.get("logic", "AND")
 
         clauses = [
             self.construct_node_representation({"type": node_type, "properties": {k: v}}, ident).strip()
             for k, v in node["properties"].items()
         ]
-        base = {"logic": node["logic"], "node_type": node_type, "ident": ident}
-        if node["logic"] == "OR":
+        base = {"logic": logic, "node_type": node_type, "ident": ident}
+        if logic == "OR":
             base["clauses"] = clauses
         else:
             base["bare"] = f"({node_type} {ident})"

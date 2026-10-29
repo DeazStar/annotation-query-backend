@@ -5,6 +5,7 @@ from hyperon import MeTTa, SymbolAtom, ExpressionAtom, GroundedAtom
 import logging
 from .query_generator_interface import QueryGeneratorInterface
 from .metta import Metta_Ground, metta_seralizer
+from app.error import LogicValidationError
 # Set up logging configuration
 
 logger = logging.getLogger(__name__)
@@ -179,11 +180,11 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
         if not predicates:
             if len(nodes) == 1 and nodes[0].get("logic", "AND") != "AND" and not nodes[0].get("id") and nodes[0].get("properties"):
                 if node_only:
-                    raise ValueError("logic OR/NOT is not supported with node_only on MeTTa yet")
+                    raise LogicValidationError("logic OR/NOT is not supported with node_only on MeTTa yet")
                 spec = self._boolean_spec_metta(nodes[0])
                 return [spec["query"], spec["total_count"], spec["label_count"]]
             if any(n.get("logic", "AND") != "AND" for n in nodes):
-                raise ValueError("logic OR/NOT is only supported for single-node queries with properties on MeTTa")
+                raise LogicValidationError("logic OR/NOT is only supported for single-node queries with properties on MeTTa")
             for node in nodes:
                 node_type = node["type"]
                 node_id = node["node_id"]
@@ -221,7 +222,7 @@ class MeTTa_Query_Generator(QueryGeneratorInterface):
 
         for node in nodes:
             if node.get("logic", "AND") != "AND":
-                raise ValueError("logic OR/NOT is not supported together with predicates on MeTTa yet")
+                raise LogicValidationError("logic OR/NOT is not supported together with predicates on MeTTa yet")
         for predicate in predicates:
             predicate_type = predicate['type'].replace(" ", "_")
             source_id = predicate['source']

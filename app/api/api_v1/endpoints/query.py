@@ -32,6 +32,7 @@ from app.lib.email import send_email
 from app.lib.query_canonical import canonicalize_graph, query_fingerprint
 import threading
 from app.core.config import settings
+from app.error import LogicValidationError
 from app.api.deps import oauth2_scheme
 from app.events.redis_event import RedisStopEvent
 from app.core.config import settings
@@ -346,9 +347,12 @@ def process_query(
                     }
 
             # Generate Query using canonical requests for stable caching
-            query = db_instance.query_Generator(
-                canonical_req, canonical_node_map, limit, node_only
-            )
+            try:
+                query = db_instance.query_Generator(
+                    canonical_req, canonical_node_map, limit, node_only
+                )
+            except LogicValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
             result_query = query[0]
             total_count_query = query[1]
             count_by_label_query = query[2]

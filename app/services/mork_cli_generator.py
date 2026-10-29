@@ -211,6 +211,31 @@ if threading.current_thread() is threading.main_thread():
 
 # ---------------------------------------------------------------------------
 
+def _split_sexprs(text):
+    """Split concatenated top-level s-expressions into a list of clauses."""
+    clauses, depth, start, in_quote, i = [], 0, None, False, 0
+    while i < len(text):
+        ch = text[i]
+        if in_quote:
+            if ch == "\\":
+                i += 1
+            elif ch == '"':
+                in_quote = False
+        elif ch == '"':
+            in_quote = True
+        elif ch == "(":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0 and start is not None:
+                clauses.append(text[start:i + 1])
+                start = None
+        i += 1
+    return clauses or [text.strip()]
+
+
 class MorkCLIQueryGenerator(MorkQueryGenerator):
     def __init__(self, dataset_path, act_filename="annotation.act", species="human"):
         super().__init__(dataset_path=None)
@@ -599,9 +624,60 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
         logger.info("Query executed", extra={"query": str(query_obj), "duration_ms": duration, "status": "capped" if _atom_cap else "success"})
         return [all_atoms]
 
+    def _run_boolean_query(self, query, stop_event=None, species='human'):
+        """OR/NOT: run several single-pattern queries and combine the atoms."""
+        pattern_tuple, template_tuple, query_type, current_id = query[:4]
+        spec = query[4]
+
+        def run(pattern):
+            if stop_event is not None and stop_event.is_set():
+                return []
+            atoms = self.run_query(
+                ((pattern,), template_tuple, query_type, current_id),
+                stop_event=stop_event,
+                species=species,
+            )
+            return atoms[0] if atoms else []
+
+        if spec["logic"] == "OR":
+            merged, seen = [], set()
+            for pattern in spec["patterns"]:
+                for atom in run(pattern):
+                    key = str(atom)
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append(atom)
+            filtered = merged
+        else:
+            excluded = {str(atom) for atom in run(spec["exclude"])}
+            filtered = [atom for atom in run(spec["include"]) if str(atom) not in excluded]
+
+        def atom_label(atom):
+            children = atom.get_children() if hasattr(atom, "get_children") else ()
+            if len(children) < 2 or not hasattr(children[1], "get_children"):
+                return None
+            node = children[1].get_children()
+            return node[0].get_name() if node and hasattr(node[0], "get_name") else None
+
+        if query_type == "total_count":
+            return [{"node_count": len(filtered), "edge_count": 0}]
+        if query_type == "label_count":
+            counts = {}
+            for atom in filtered:
+                label = atom_label(atom)
+                if label:
+                    counts[label] = counts.get(label, 0) + 1
+            return [{"node_count_by_label": [
+                {"label": label, "count": count}
+                for label, count in counts.items()
+            ], "edge_count_by_label": []}]
+        return [filtered]
+
     def run_query(self, query, stop_event=None, species='human'):
         start_time = time.time()
-        pattern_tuple, template_tuple, query_type, _ = query
+        if len(query) > 4 and query[4]:
+            return self._run_boolean_query(query, stop_event=stop_event, species=species)
+        pattern_tuple, template_tuple, query_type, _ = query[:4]
 
         pattern_str = " ".join(pattern_tuple)
         template_str = " ".join(template_tuple)
@@ -630,9 +706,10 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                     logger.warning(f"SHM Symlink update failed: {e}")
 
         if len(pattern_tuple) == 1:
-            act_pattern = pattern_tuple[0]
-            template_body = template_str
-            metta_query = f'(exec 0 (I (ACT {target_space} {act_pattern})) (, {template_body}))'
+            sources = " ".join(
+                f"(ACT {target_space} {clause})" for clause in _split_sexprs(pattern_tuple[0])
+            )
+            metta_query = f'(exec 0 (I {sources}) (, {template_str}))'
         else:
             return self._resolve_chained_patterns(pattern_tuple, template_tuple, query, start_time)
         

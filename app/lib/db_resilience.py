@@ -184,6 +184,7 @@ class QueryType(str, Enum):
     LIST = "list"    # Gene-list vs gene-list queries
     LOAD = "load"         # Dataset loading (cypher file ingestion)
     SCHEMA = "schema"       # Schema / metadata introspection queries
+    PATHS = "paths"         # Bounded source-to-target path searches
 
 
 class QueryTimeoutError(Exception):
@@ -300,6 +301,7 @@ class ResilientDriver:
     def _run_query_in_thread(
         self,
         query_code: str,
+        params: Optional[dict],
         stop_event,
         result_holder: list,
         exc_holder: list,
@@ -312,7 +314,7 @@ class ResilientDriver:
         try:
             results = []
             with self.session() as session:
-                result = session.run(query_code)
+                result = session.run(query_code, parameters=params)
                 for record in result:
                     if stop_event is not None and stop_event.is_set():
                         raise TaskCancelledException()
@@ -344,6 +346,7 @@ class ResilientDriver:
         query_code: str,
         stop_event=None,
         query_type: QueryType = QueryType.DEFAULT,
+        params: Optional[dict] = None,
     ):
         """
         Execute *query_code* against this driver, retrying transient failures
@@ -403,7 +406,7 @@ class ResilientDriver:
                     # No timeout: use lazy loading
                     results = []
                     with self.session() as session:
-                        result = session.run(query_code)
+                        result = session.run(query_code, parameters=params)
                         for record in result:
                             if stop_event is not None and stop_event.is_set():
                                 raise TaskCancelledException()
@@ -417,7 +420,7 @@ class ResilientDriver:
     
                     worker = threading.Thread(
                         target=self._run_query_in_thread,
-                        args=(query_code, stop_event, result_holder, exc_holder, cancel_event),
+                        args=(query_code, params, stop_event, result_holder, exc_holder, cancel_event),
                         daemon=True,
                     )
                     worker.start()

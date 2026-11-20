@@ -6,9 +6,13 @@ import glob
 import os
 from collections import Counter
 import re
+from pathlib import Path
+from functools import lru_cache
+import yaml
 from app.lib.db_resilience import ResilientDriver, RetryPolicy, QueryType, QueryTimeoutConfig
 from app.lib.result_formatter import Result_Formatter
 from app.lib.validator import LogicValidationError, negated_predicate_ends, or_predicate_ends
+from app.services.path_search import MAX_RESULT_ROWS, PathSearchResourceError
 from collections import deque
 
 load_dotenv()
@@ -41,10 +45,50 @@ _TIMEOUT_CONFIG = QueryTimeoutConfig(
         QueryType.LIST: None,   # indefinite
         QueryType.LOAD:      None,   # indefinite
         QueryType.SCHEMA:    None,   # indefinite
+        QueryType.PATHS:     10.0,  # bounded path search
     },
     fallback_results={},
     warn_threshold_s=None,           # set e.g. to 10.0 to log slow queries
 )
+
+
+_PATH_EVIDENCE_FIELDS = {
+    "score",
+    "p_value",
+    "confidence",
+    "evidence_score",
+    "publication_count",
+    "support",
+}
+_PATH_OPERATORS = {">": ">", ">=": ">=", "<": "<", "<=": "<=", "==": "=", "!=": "<>"}
+
+
+@lru_cache(maxsize=1)
+def _path_schema_whitelist() -> tuple[set[str], set[str]]:
+    root = Path(__file__).resolve().parents[2] / "config"
+    node_types: set[str] = set()
+    edge_types: set[str] = set()
+    for schema_path in root.glob("**/*.yaml"):
+        try:
+            document = yaml.safe_load(schema_path.read_text(encoding="utf-8"))
+        except (yaml.YAMLError, OSError):
+            logger.warning("Skipping unreadable path schema file: %s", schema_path)
+            continue
+        if not isinstance(document, dict):
+            continue
+        for section_name, target in (("nodes", node_types), ("relationships", edge_types), ("edges", edge_types)):
+            section = document.get(section_name, {})
+            if not isinstance(section, dict):
+                continue
+            for key, value in section.items():
+                if isinstance(key, str):
+                    target.add(key)
+                if isinstance(value, dict):
+                    for field in ("input_label", "output_label", "label"):
+                        label = value.get(field)
+                        if isinstance(label, str):
+                            target.add(label)
+    return node_types, edge_types
 
 
 class CypherQueryGenerator(QueryGeneratorInterface):
@@ -108,14 +152,255 @@ class CypherQueryGenerator(QueryGeneratorInterface):
         logger.info(
             f"Finished loading {len(nodes_paths)} nodes and {len(edges_paths)} edges datasets.")
 
-    def run_query(self, query_code, stop_event=None, species="human", query_type: QueryType = QueryType.DEFAULT):
+    def run_query(
+        self,
+        query_code,
+        stop_event=None,
+        species="human",
+        query_type: QueryType = QueryType.DEFAULT,
+        params: Optional[dict] = None,
+    ):
         if species != "human":
             if self.fly_driver is None:
                 raise RuntimeError("Fly Neo4j driver is not configured. Set FLY_NEO4J_URI.")
             driver = self.fly_driver
         else:
             driver = self.human_driver
-        return driver.run_with_retry(query_code, stop_event=stop_event, query_type=query_type)
+        return driver.run_with_retry(
+            query_code,
+            stop_event=stop_event,
+            query_type=query_type,
+            params=params,
+        )
+
+    @staticmethod
+    def _path_type(value: str, allowed: set[str], label: str) -> str:
+        if not isinstance(value, str) or value not in allowed:
+            raise ValueError(f"Unknown {label}: {value}")
+        return value
+
+    @staticmethod
+    def _path_label(value: str) -> str:
+        return f"`{value.replace('`', '``')}`"
+
+    @classmethod
+    def _path_endpoint_clauses(cls, endpoints: list[dict], prefix: str, params: dict) -> list[str]:
+        path_node_types, _ = _path_schema_whitelist()
+        by_type: dict[str, list[str]] = {}
+        for endpoint in endpoints:
+            node_type = cls._path_type(endpoint["type"], path_node_types, "node type")
+            by_type.setdefault(node_type, []).append(endpoint["id"])
+        clauses = []
+        for index, (node_type, ids) in enumerate(sorted(by_type.items())):
+            name = f"{prefix}_ids_{index}"
+            params[name] = ids
+            clauses.append(f"(n:{cls._path_label(node_type)} AND n.id IN ${name})")
+        return clauses
+
+    @classmethod
+    def _path_id_clauses(cls, endpoints: list[dict], resolved_ids: set[str], variable: str,
+                         prefix: str, params: dict) -> list[str]:
+        path_node_types, _ = _path_schema_whitelist()
+        by_type: dict[str, list[str]] = {}
+        for endpoint in endpoints:
+            if endpoint["id"] not in resolved_ids:
+                continue
+            node_type = cls._path_type(endpoint["type"], path_node_types, "node type")
+            by_type.setdefault(node_type, []).append(endpoint["id"])
+        clauses = []
+        for index, (node_type, ids) in enumerate(sorted(by_type.items())):
+            name = f"{prefix}_ids_{index}"
+            params[name] = ids
+            clauses.append(f"({variable}:{cls._path_label(node_type)} AND {variable}.id IN ${name})")
+        return clauses
+
+    @classmethod
+    def _path_filter_where(cls, request: dict, params: dict) -> list[str]:
+        _, path_edge_types = _path_schema_whitelist()
+        path_node_types, _ = _path_schema_whitelist()
+        where = [
+            "all(n IN nodes(p) WHERE single(m IN nodes(p) WHERE m = n))",
+        ]
+        edge_types = request["edge_types"]
+        for kind in ("allow", "exclude"):
+            values = edge_types[kind]
+            if not values:
+                continue
+            values = [cls._path_type(value, path_edge_types, "edge type") for value in values]
+            name = f"edge_{kind}_types"
+            params[name] = values
+            predicate = f"type(r) IN ${name}"
+            where.append(
+                f"all(r IN relationships(p) WHERE {predicate})"
+                if kind == "allow"
+                else f"none(r IN relationships(p) WHERE {predicate})"
+            )
+
+        intermediate = request["intermediate_node_types"]
+        for kind in ("allow", "exclude"):
+            values = intermediate[kind]
+            if not values:
+                continue
+            values = [cls._path_type(value, path_node_types, "node type") for value in values]
+            name = f"intermediate_{kind}_types"
+            params[name] = values
+            predicate = f"any(label IN labels(n) WHERE label IN ${name})"
+            where.append(
+                f"all(n IN nodes(p)[1..-1] WHERE {predicate})"
+                if kind == "allow"
+                else f"none(n IN nodes(p)[1..-1] WHERE {predicate})"
+            )
+
+        evidence_operators = []
+        for index, evidence_filter in enumerate(request["evidence_filters"]):
+            field = evidence_filter["field"]
+            operator = evidence_filter["operator"]
+            if field not in _PATH_EVIDENCE_FIELDS or operator not in _PATH_OPERATORS:
+                raise ValueError("Malformed evidence filter")
+            name = f"evidence_{index}"
+            params[name] = evidence_filter["value"]
+            evidence_operators.append(
+                f"all(r IN relationships(p) WHERE r.{cls._path_label(field)} "
+                f"{_PATH_OPERATORS[operator]} ${name})"
+            )
+        where.extend(evidence_operators)
+
+        hub = request["hub_avoidance"]
+        if hub["exclude_ids"]:
+            params["hub_exclude_ids"] = hub["exclude_ids"]
+            where.append("none(n IN nodes(p)[1..-1] WHERE n.id IN $hub_exclude_ids)")
+        if hub["enabled"]:
+            params["hub_max_degree"] = hub["max_degree"]
+            where.append(
+                "all(n IN nodes(p)[1..-1] WHERE COUNT { (n)--() } <= $hub_max_degree)"
+            )
+        return where
+
+    @staticmethod
+    def _path_record_value(record, key, default=None):
+        if hasattr(record, "get"):
+            return record.get(key, default)
+        return record[key] if key in record else default
+
+    @classmethod
+    def _serialize_path_record(cls, record: dict) -> dict:
+        nodes = []
+        for node in cls._path_record_value(record, "nodes", []) or []:
+            properties = dict(node.get("properties") or {})
+            properties.pop("id", None)
+            node_id = node.get("id")
+            properties["degree"] = node.get("degree", properties.get("degree", 0))
+            nodes.append({
+                "id": node_id,
+                "type": node.get("type"),
+                "properties": properties,
+            })
+        edges = []
+        for edge in cls._path_record_value(record, "edges", []) or []:
+            evidence = edge.get("evidence") or {}
+            if not isinstance(evidence, dict):
+                evidence = {}
+            edges.append({
+                "source": edge.get("source"),
+                "target": edge.get("target"),
+                "source_type": edge.get("source_type"),
+                "target_type": edge.get("target_type"),
+                "type": edge.get("type"),
+                "evidence": evidence,
+            })
+        return {"nodes": nodes, "edges": edges}
+
+    def find_paths(self, request: dict) -> dict:
+        max_hops = int(request["max_hops"])
+        if not 1 <= max_hops <= 4:
+            raise ValueError("max_hops must be between 1 and 4")
+        candidate_cap = min(max(int(request["k"]) * 5, int(request["k"]) + 1), 1000)
+        params: dict = {}
+        self._path_filter_where(request, {})
+        all_endpoints = request["sources"] + request["targets"]
+        endpoint_ids = {endpoint["id"] for endpoint in all_endpoints}
+        endpoint_clauses = self._path_endpoint_clauses(all_endpoints, "endpoint", params)
+        resolution_query = (
+            "MATCH (n) WHERE " + " OR ".join(endpoint_clauses) +
+            " RETURN n.id AS id, labels(n) AS labels"
+        )
+        resolution_records = self.run_query(
+            resolution_query,
+            species=request["species"],
+            query_type=QueryType.PATHS,
+            params=params,
+        )
+        resolved_ids = {
+            self._path_record_value(record, "id")
+            for record in resolution_records
+            if self._path_record_value(record, "id") in endpoint_ids
+        }
+        unresolved_ids = sorted(endpoint_ids - resolved_ids)
+        if not resolved_ids:
+            return {"candidates": [], "unresolved_ids": unresolved_ids, "truncated": False}
+
+        params = {}
+        source_clauses = self._path_id_clauses(
+            request["sources"], resolved_ids, "s", "source", params
+        )
+        target_clauses = self._path_id_clauses(
+            request["targets"], resolved_ids, "t", "target", params
+        )
+        if not source_clauses or not target_clauses:
+            return {"candidates": [], "unresolved_ids": unresolved_ids, "truncated": False}
+        where = [
+            f"({' OR '.join(source_clauses)})",
+            f"({' OR '.join(target_clauses)})",
+        ]
+        where.extend(self._path_filter_where(request, params))
+        params["candidate_cap"] = candidate_cap + 1
+        path_query = f"""
+MATCH p=(s)-[*1..{max_hops}]-(t)
+WHERE {' AND '.join(where)}
+WITH p, [n IN nodes(p) | n.id] AS path_ids
+WITH p, path_ids,
+     [r IN relationships(p) WHERE r.score IS NOT NULL] AS scored_rels
+WITH p, path_ids,
+     CASE WHEN size(scored_rels) = 0 THEN 0.0
+          ELSE reduce(total = 0.0, r IN scored_rels | total + r.score) / size(scored_rels)
+     END AS path_score
+ORDER BY length(p) ASC, path_score DESC, path_ids ASC
+LIMIT $candidate_cap
+WITH p, nodes(p) AS path_nodes, relationships(p) AS path_rels
+RETURN
+  [n IN path_nodes | {{
+    id: n.id,
+    type: head(labels(n)),
+    properties: properties(n),
+    degree: COUNT {{ (n)--() }}
+  }}] AS nodes,
+  [r IN path_rels | {{
+    source: startNode(r).id,
+    target: endNode(r).id,
+    source_type: head(labels(startNode(r))),
+    target_type: head(labels(endNode(r))),
+    type: type(r),
+    evidence: properties(r)
+  }}] AS edges
+"""
+        records = self.run_query(
+            path_query,
+            species=request["species"],
+            query_type=QueryType.PATHS,
+            params=params,
+        )
+        records = list(records)
+        if len(records) > MAX_RESULT_ROWS:
+            raise PathSearchResourceError(
+                f"Path search exceeded MAX_RESULT_ROWS ({MAX_RESULT_ROWS})"
+            )
+        return {
+            "candidates": [
+                self._serialize_path_record(record) for record in records[:candidate_cap]
+            ],
+            "unresolved_ids": unresolved_ids,
+            "truncated": len(records) > candidate_cap,
+        }
 
     LOCALIZATION_PREDICATES = ("located_in", "part_of")
 

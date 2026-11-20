@@ -12,13 +12,14 @@ from hyperon import MeTTa
 from .metta import metta_seralizer
 from .mork import MORK, ManagedMORK, get_count_by_label, get_total_counts
 from app.error import QueryValidationError
+from .mork_paths import MorkPathMixin
 
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 
-class MorkQueryGenerator:
+class MorkQueryGenerator(MorkPathMixin):
     def __init__(self, dataset_path):
         self.server = self.connect()
         self.metta = MeTTa()
@@ -129,6 +130,22 @@ class MorkQueryGenerator:
             return metta_results
         else:
             raise ValueError("query must be a tuple or a list of tuples")
+
+    def _run_pattern(self, pattern_str, template_str):
+        """Run one path pattern through the server transform/download API.
+
+        This path adapter is untested until a MORK server is available.
+        """
+        query_id = self.generate_id()
+        with self.server.work_at("annotation") as annotation:
+            annotation.transform(
+                (pattern_str,),
+                (f"({query_id} {template_str})",),
+            ).block()
+            result = annotation.download(f"({query_id} $x)", "($x)")
+            with annotation.work_at(query_id) as temporary:
+                temporary.clear()
+        return self.metta.parse_all(result.data)
 
     def find_localized_proteins(self, protein_ids, location_ids, species="human"):
         """Returns (protein_id, location_id) pairs for proteins located_in or

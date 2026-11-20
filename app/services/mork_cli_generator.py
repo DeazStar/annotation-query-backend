@@ -281,6 +281,9 @@ class MorkCLIQueryGenerator(MorkQueryGenerator):
                 except Exception:
                     pass
 
+    def _run_pattern(self, pattern_str, template_str):
+        return self._run_single_pattern(pattern_str, template_str)
+
     def prepare_query_input(self, inputs, schema):
         """
         Batch-optimized: runs one MORK query per (node_type, property) pair
